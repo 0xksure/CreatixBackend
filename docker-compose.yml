@@ -5,8 +5,8 @@ services:
       context: .
       dockerfile: Dockerfile.db
     environment:
-      - DB_NAME=db
-      - DB_PASS=Pwd1
-      - DB_USER=db
-      - DB_HOST=localhost
-      - DB_PORT=5434
+      - POSTGRES_USER=db
+      - POSTGRES_PASSWORD=Pwd1
+      - POSTGRES_DB=db
+    ports:
+      - "5432:5432"
