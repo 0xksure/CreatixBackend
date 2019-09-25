@@ -1,0 +1,12 @@
+version: '3.3'
+services:
+  db:
+    build: 
+      context: .
+      dockerfile: Dockerfile.db
+    environment:
+      - DB_NAME=db
+      - DB_PASS=Pwd1
+      - DB_USER=db
+      - DB_HOST=localhost
+      - DB_PORT=5434
