@@ -1,4 +1,4 @@
-FROM postgres:9.6
-RUN mkdir -p sql
-ADD sql sql
-
+FROM postgres:10
+COPY ./sql/01_user.sql /docker-entrypoint-initdb.d/
+COPY ./run.sh /docker-entrypoint-initdb.d/
+RUN chmod +x /docker-entrypoint-initdb.d/

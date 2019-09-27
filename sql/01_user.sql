@@ -1,5 +1,5 @@
-CREATE TABLE users (
-  id integer,
-  name varchar(40),
-  email varchar(40)
-)
+CREATE TABLE  account (
+  id integer PRIMARY KEY,
+  name varchar(40) NOT NULL,
+  email varchar(40) UNIQUE NOT NULL
+);

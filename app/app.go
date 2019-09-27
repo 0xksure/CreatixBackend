@@ -8,9 +8,22 @@ import (
 	"strings"
 
 	"github.com/dgrijalva/jwt-go"
+	"github.com/gorilla/mux"
+	"github.com/kristofhb/CreatixBackend/config"
 	"github.com/kristofhb/CreatixBackend/models"
 	"github.com/kristofhb/CreatixBackend/utils"
 )
+
+type App struct {
+	cfg    *config.Config
+	router *mux.Router
+	src    *http.Server
+}
+
+// New sets up a new app
+func New(cfg *config.Config) {
+
+}
 
 var JwtAuthentication = func(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

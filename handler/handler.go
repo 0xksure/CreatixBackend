@@ -13,6 +13,14 @@ import (
 	"github.com/kristofhb/CreatixBackend/controllers"
 )
 
+type event struct {
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+}
+
+var events []event
+
 func Restapi() {
 
 	router := mux.NewRouter().StrictSlash(true)
@@ -41,10 +49,15 @@ func createEvent(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintf(w, "Kindly enter title and description")
 	}
 
-	json.Unmarshal(reqBody, &newEvent)
+	if err := json.Unmarshal(reqBody, &newEvent); err != nil {
+		log.Fatal("Not able to marshall data")
+	}
+
 	events = append(events, newEvent)
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(newEvent)
+	if err := json.NewEncoder(w).Encode(newEvent); err != nil {
+		log.Fatal("Not able to encode ")
+	}
 }
 
 func getOneEvent(w http.ResponseWriter, r *http.Request) {
