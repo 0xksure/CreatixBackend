@@ -6,18 +6,19 @@ import (
 	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/postgres"
 	"github.com/kristofhb/CreatixBackend/config"
+	"github.com/kristofhb/CreatixBackend/logging"
 )
 
 var db *gorm.DB
 
-func ConnectDB(cfg *config.Config) {
-
-	dbUri := fmt.Sprintf("host=%s user=%s dbname=%s sslmode=disable password=%s", &cfg.DbHost, &cfg.DbUser, cfg.DbName, cfg.DbPass)
+func ConnectDB(cfg *config.Config, stdLog *logging.StandardLogger) {
+	dbUri := fmt.Sprintf("host=%s port=%s user=%s dbname=%s sslmode=disable password=%s", cfg.DbHost, cfg.DbPort, cfg.DbUser, cfg.DbName, cfg.DbPass)
 	fmt.Println(dbUri)
 
 	conn, err := gorm.Open("postgres", dbUri)
 	if err != nil {
 		fmt.Print(err)
+		stdLog.Unsuccessful("Not able to open postgres", err)
 	}
 
 	db = conn

@@ -25,6 +25,7 @@ require (
 	github.com/prometheus/procfs v0.0.5 // indirect
 	github.com/saibing/bingo v0.0.0-20190331051950-76bcd777316d // indirect
 	github.com/shirou/gopsutil v2.18.12+incompatible // indirect
+	github.com/sirupsen/logrus v1.4.2
 	github.com/sourcegraph/ctxvfs v0.0.0-20180418081416-2b65f1b1ea81 // indirect
 	github.com/sourcegraph/go-langserver v2.0.0+incompatible // indirect
 	github.com/sourcegraph/jsonrpc2 v0.0.0-20190106185902-35a74f039c6a // indirect

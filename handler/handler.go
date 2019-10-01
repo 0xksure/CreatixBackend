@@ -11,6 +11,7 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/kristofhb/CreatixBackend/app"
 	"github.com/kristofhb/CreatixBackend/controllers"
+	"github.com/kristofhb/CreatixBackend/logging"
 )
 
 type event struct {
@@ -21,7 +22,7 @@ type event struct {
 
 var events []event
 
-func Restapi() {
+func Restapi(stdLog *logging.StandardLogger) {
 
 	router := mux.NewRouter().StrictSlash(true)
 	router.Use(app.JwtAuthentication)
@@ -47,6 +48,7 @@ func createEvent(w http.ResponseWriter, r *http.Request) {
 	reqBody, err := ioutil.ReadAll(r.Body)
 	if err != nil {
 		fmt.Fprintf(w, "Kindly enter title and description")
+
 	}
 
 	if err := json.Unmarshal(reqBody, &newEvent); err != nil {

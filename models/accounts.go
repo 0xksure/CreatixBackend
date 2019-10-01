@@ -1,8 +1,10 @@
 package models
 
 import (
+	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/dgrijalva/jwt-go"
 	"github.com/jinzhu/gorm"
@@ -19,9 +21,10 @@ type Token struct {
 // User Accounts
 type Account struct {
 	gorm.Model
-	Email    string `json:"email"`
-	Password string `json:"password"`
-	Token    string `json:"token";sql:"-"`
+	Email    string    `json:"email"`
+	Password string    `json:"password"`
+	Token    string    `json:"token";sql:"-"`
+	Expires  time.Time `json:"expires"`
 }
 
 // Validate incoming user details
@@ -48,7 +51,7 @@ func (account *Account) Validate() (map[string]interface{}, bool) {
 	return utils.Message(false, "Requirement passed"), true
 }
 
-func (account *Account) Create() map[string]interface{} {
+func (account *Account) Create(w http.ResponseWriter) map[string]interface{} {
 
 	if resp, ok := account.Validate(); !ok {
 		return resp
@@ -64,6 +67,11 @@ func (account *Account) Create() map[string]interface{} {
 	}
 
 	// Create new JWT token for the newly registered account
+
+	// Expiration time of token
+	expirationTime := time.Now().Add(5 * time.Minute)
+	account.Expires = expirationTime
+
 	tk := &Token{UserId: account.ID}
 	token := jwt.NewWithClaims(jwt.GetSigningMethod("HS256"), tk)
 	tokenString, _ := token.SignedString([]byte(os.Getenv("token_password")))
@@ -72,12 +80,18 @@ func (account *Account) Create() map[string]interface{} {
 	account.Password = "" //delete password
 
 	response := utils.Message(true, "Account has been created")
-	response["Account"] = account
+	response["account"] = account
 
+	// Set the client cookie for token
+	http.SetCookie(w, &http.Cookie{
+		Name:    "token",
+		Value:   tokenString,
+		Expires: expirationTime,
+	})
 	return response
 }
 
-func Login(email, password string) map[string]interface{} {
+func Login(w http.ResponseWriter, email string, password string) map[string]interface{} {
 
 	account := &Account{}
 	err := GetDB().Table("accounts").Where("email = ?", email).First(account).Error
@@ -97,13 +111,30 @@ func Login(email, password string) map[string]interface{} {
 	account.Password = ""
 
 	// Create JWT token
-	tk := &Token{UserId: account.ID}
+	// Expiration time of token
+	expirationTime := time.Now().Add(5 * time.Minute)
+	account.Expires = expirationTime
+	// Create the JWT claims,
+	tk := &Token{UserId: account.ID,
+		StandardClaims: jwt.StandardClaims{
+			ExpiresAt: expirationTime.Unix(),
+		}}
 	token := jwt.NewWithClaims(jwt.GetSigningMethod("HS256"), tk)
-	tokenString, _ := token.SignedString([]byte(os.Getenv("token_password")))
+	tokenString, err := token.SignedString([]byte(os.Getenv("token_password")))
+	if err != nil {
+		return utils.Message(false, "Invalid Login credentials. Please try again.")
+	}
 	account.Token = tokenString
 
 	resp := utils.Message(true, "Logged in")
 	resp["account"] = account
+
+	// Set the client cookie for token
+	http.SetCookie(w, &http.Cookie{
+		Name:    "token",
+		Value:   tokenString,
+		Expires: expirationTime,
+	})
 	return resp
 }
 

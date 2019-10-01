@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/joho/godotenv"
+	"github.com/sirupsen/logrus"
 )
 
 type Config struct {
@@ -14,10 +15,14 @@ type Config struct {
 	DbPass string
 	DbName string
 	DbHost string
+	DbPort string
 }
 
 // SetUpConfig sets up the correct configuration for the app
 func SetUpConfig() (cfg *Config, err error) {
+
+	logrus.SetFormatter(&logrus.JSONFormatter{})
+
 	e := godotenv.Load()
 	if e != nil {
 		return &Config{}, err
@@ -43,6 +48,11 @@ func SetUpConfig() (cfg *Config, err error) {
 		return &Config{}, errors.New("database name is not defined")
 	}
 
+	dbPort := os.Getenv("db_port")
+	if dbPort == "" {
+		return &Config{}, errors.New("database port is not defined ")
+	}
+
 	env := os.Getenv("env")
 	if env == "" {
 		log.Printf("environment not set. Setting to dev")
@@ -52,8 +62,9 @@ func SetUpConfig() (cfg *Config, err error) {
 	return &Config{
 		env,
 		dbUser,
+		dbPass,
 		dbName,
 		dbHost,
-		dbPass,
+		dbPort,
 	}, nil
 }

@@ -28,7 +28,7 @@ func New(cfg *config.Config) {
 var JwtAuthentication = func(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// endpoints that does not require auth
-		notAuth := []string{"/api/user/new", "/api/user/login"}
+		notAuth := []string{"/api/user/new", "/api/user/login", "/"}
 
 		// Current request path
 		requestPath := r.URL.Path
