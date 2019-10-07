@@ -22,7 +22,9 @@ func ConnectDB(cfg *config.Config, stdLog *logging.StandardLogger) {
 	}
 
 	db = conn
+	fmt.Println("Auto Migrate")
 	db.Debug().AutoMigrate(&Account{})
+	db.Debug().AutoMigrate(&Newsletter{})
 }
 
 func GetDB() *gorm.DB {

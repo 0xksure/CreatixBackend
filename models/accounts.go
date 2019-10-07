@@ -1,6 +1,8 @@
 package models
 
 import (
+	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"strings"
@@ -12,23 +14,8 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-//JWT claims structure
-type Token struct {
-	UserId uint
-	jwt.StandardClaims
-}
-
-// User Accounts
-type Account struct {
-	gorm.Model
-	Email    string    `json:"email"`
-	Password string    `json:"password"`
-	Token    string    `json:"token";sql:"-"`
-	Expires  time.Time `json:"expires"`
-}
-
 // Validate incoming user details
-func (account *Account) Validate() (map[string]interface{}, bool) {
+func ValidateAccount(account *Account) (map[string]interface{}, bool) {
 	if !strings.Contains(account.Email, "@") {
 		return utils.Message(false, "Email address is required"), false
 	}
@@ -51,9 +38,9 @@ func (account *Account) Validate() (map[string]interface{}, bool) {
 	return utils.Message(false, "Requirement passed"), true
 }
 
-func (account *Account) Create(w http.ResponseWriter) map[string]interface{} {
+func Create(account *Account, w http.ResponseWriter) map[string]interface{} {
 
-	if resp, ok := account.Validate(); !ok {
+	if resp, ok := ValidateAccount(account); !ok {
 		return resp
 	}
 
@@ -72,7 +59,7 @@ func (account *Account) Create(w http.ResponseWriter) map[string]interface{} {
 	expirationTime := time.Now().Add(5 * time.Minute)
 	account.Expires = expirationTime
 
-	tk := &Token{UserId: account.ID}
+	tk := &Token{UserID: account.ID}
 	token := jwt.NewWithClaims(jwt.GetSigningMethod("HS256"), tk)
 	tokenString, _ := token.SignedString([]byte(os.Getenv("token_password")))
 	account.Token = tokenString
@@ -91,7 +78,7 @@ func (account *Account) Create(w http.ResponseWriter) map[string]interface{} {
 	return response
 }
 
-func Login(w http.ResponseWriter, email string, password string) map[string]interface{} {
+func Login(email string, password string) map[string]interface{} {
 
 	account := &Account{}
 	err := GetDB().Table("accounts").Where("email = ?", email).First(account).Error
@@ -115,7 +102,7 @@ func Login(w http.ResponseWriter, email string, password string) map[string]inte
 	expirationTime := time.Now().Add(5 * time.Minute)
 	account.Expires = expirationTime
 	// Create the JWT claims,
-	tk := &Token{UserId: account.ID,
+	tk := &Token{UserID: account.ID,
 		StandardClaims: jwt.StandardClaims{
 			ExpiresAt: expirationTime.Unix(),
 		}}
@@ -130,12 +117,29 @@ func Login(w http.ResponseWriter, email string, password string) map[string]inte
 	resp["account"] = account
 
 	// Set the client cookie for token
-	http.SetCookie(w, &http.Cookie{
+	/*http.SetCookie(w, &http.Cookie{
 		Name:    "token",
 		Value:   tokenString,
 		Expires: expirationTime,
-	})
+	})*/
 	return resp
+}
+
+func GetToken(tokenHeader string) ([]string, map[string]interface{}, error) {
+	fmt.Println("GET token")
+	// token header is missing
+	if tokenHeader == "" {
+		return nil, utils.Message(false, "Invalid/Malformed auth token"), errors.New("Invalid Token")
+	}
+	fmt.Println("Token header exists")
+
+	splitted := strings.Split(tokenHeader, " ")
+	// Check if token comes in format `Bearer {token}`
+	if len(splitted) != 2 {
+		return nil, utils.Message(false, "Invalid/Malformed auth token"), errors.New("Missing Token")
+	}
+
+	return splitted, nil, nil
 }
 
 func GetUser(u uint) *Account {

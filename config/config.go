@@ -10,12 +10,13 @@ import (
 )
 
 type Config struct {
-	Env    string
-	DbUser string
-	DbPass string
-	DbName string
-	DbHost string
-	DbPort string
+	Env           string
+	DbUser        string
+	DbPass        string
+	DbName        string
+	DbHost        string
+	DbPort        string
+	OriginAllowed string
 }
 
 // SetUpConfig sets up the correct configuration for the app
@@ -58,6 +59,7 @@ func SetUpConfig() (cfg *Config, err error) {
 		log.Printf("environment not set. Setting to dev")
 		env = "dev"
 	}
+	OriginAllowed := os.Getenv("ORIGIN_ALLOWED")
 
 	return &Config{
 		env,
@@ -66,5 +68,6 @@ func SetUpConfig() (cfg *Config, err error) {
 		dbName,
 		dbHost,
 		dbPort,
+		OriginAllowed,
 	}, nil
 }

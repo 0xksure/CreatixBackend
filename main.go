@@ -22,6 +22,5 @@ func main() {
 		return
 	}
 	models.ConnectDB(cfg, standardLogger)
-
-	handler.Restapi(standardLogger)
+	handler.Restapi(cfg, standardLogger)
 }

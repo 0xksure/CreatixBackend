@@ -17,3 +17,12 @@ func Respond(w http.ResponseWriter, data map[string]interface{}) {
 		log.Fatal("Ohh noo")
 	}
 }
+
+func SliceContains(s []int, e int) bool {
+	for _, a := range s {
+		if a == e {
+			return true
+		}
+	}
+	return false
+}
