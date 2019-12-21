@@ -2,12 +2,6 @@ package logging
 
 import "github.com/sirupsen/logrus"
 
-type Event struct {
-	ID      int
-	Message string
-	Error   error
-}
-
 type StandardLogger struct {
 	*logrus.Logger
 }

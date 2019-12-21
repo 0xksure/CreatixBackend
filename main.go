@@ -3,16 +3,14 @@ package main
 import (
 	"log"
 
+	"github.com/kristofhb/CreatixBackend/app"
 	"github.com/kristofhb/CreatixBackend/config"
-	"github.com/kristofhb/CreatixBackend/handler"
 	"github.com/kristofhb/CreatixBackend/logging"
-	"github.com/kristofhb/CreatixBackend/models"
 )
 
 //main
 
 func main() {
-
 	standardLogger := logging.NewLogger()
 	// Set up config
 	cfg, err := config.SetUpConfig()
@@ -21,6 +19,8 @@ func main() {
 		standardLogger.Misconfigured("Configuration is misconfigured", err)
 		return
 	}
-	models.ConnectDB(cfg, standardLogger)
-	handler.Restapi(cfg, standardLogger)
+
+	a := app.App{}
+	a.New(cfg)
+	a.Run()
 }

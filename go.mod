@@ -12,6 +12,7 @@ require (
 	github.com/gogo/protobuf v1.3.0 // indirect
 	github.com/gorilla/handlers v1.4.2
 	github.com/gorilla/mux v1.7.3
+	github.com/gorilla/sessions v1.2.0 // indirect
 	github.com/hashicorp/golang-lru v0.5.3 // indirect
 	github.com/jinzhu/gorm v1.9.10
 	github.com/joho/godotenv v1.3.0
@@ -25,12 +26,13 @@ require (
 	github.com/prometheus/common v0.7.0 // indirect
 	github.com/prometheus/procfs v0.0.5 // indirect
 	github.com/saibing/bingo v0.0.0-20190331051950-76bcd777316d // indirect
+	github.com/satori/go.uuid v1.2.0 // indirect
 	github.com/shirou/gopsutil v2.18.12+incompatible // indirect
 	github.com/sirupsen/logrus v1.4.2
 	github.com/sourcegraph/ctxvfs v0.0.0-20180418081416-2b65f1b1ea81 // indirect
 	github.com/sourcegraph/go-langserver v2.0.0+incompatible // indirect
 	github.com/sourcegraph/jsonrpc2 v0.0.0-20190106185902-35a74f039c6a // indirect
-	golang.org/x/crypto v0.0.0-20190325154230-a5d413f7728c
+	golang.org/x/crypto v0.0.0-20191206172530-e9b2fee46413
 	golang.org/x/net v0.0.0-20190918130420-a8b05e9114ab // indirect
 	golang.org/x/sync v0.0.0-20190911185100-cd5d95a43a6e // indirect
 	golang.org/x/sys v0.0.0-20190919044723-0c1ff786ef13 // indirect

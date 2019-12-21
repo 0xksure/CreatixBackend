@@ -1,14 +1,10 @@
 package models
 
 import (
-	"fmt"
-
-	"github.com/jinzhu/gorm"
 	_ "github.com/jinzhu/gorm/dialects/postgres"
-	"github.com/kristofhb/CreatixBackend/config"
-	"github.com/kristofhb/CreatixBackend/logging"
 )
 
+/*
 var db *gorm.DB
 
 func ConnectDB(cfg *config.Config, stdLog *logging.StandardLogger) {
@@ -30,3 +26,4 @@ func ConnectDB(cfg *config.Config, stdLog *logging.StandardLogger) {
 func GetDB() *gorm.DB {
 	return db
 }
+*/
