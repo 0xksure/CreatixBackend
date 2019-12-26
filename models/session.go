@@ -11,56 +11,66 @@ import (
 
 type User struct {
 	gorm.Model
-	Name     string
-	Email    string `gorm:"type:varchar(100);unique_index"`
-	Gender   string `json:"gender"`
-	Password string `json:"password"`
+	Firstname string
+	Lastname  string
+	Birthday  time.Time
+	Email     string `gorm:"type:varchar(100);unique_index"`
+	Password  string `json:"password"`
+}
+
+type UserInformation struct {
+	gorm.Model
+	UserID      uint
+	User        User `gorm:"foreignkey:UserID"`
+	PhoneNumber string
+	BirthDate   string
+	Gender      string
 }
 
 type UserSession struct {
-	UserID uint
-	Name   string
-	Email  string
+	UserID    uint
+	Firstname string
+	Lastname  string
+	Email     string
 	*jwt.StandardClaims
 }
 
 type Response struct {
-	Status  bool
-	Message string
-	Token   string
+	Status    bool
+	Message   string
+	Token     string
+	ExpiresAt time.Time
 	User
 }
 
-func CreateUser(db *gorm.DB, user User) (createdUser *gorm.DB, err error) {
-	createdUser = db.Create(user)
+func (user *User) CreateUser(db *gorm.DB) (createdUser *gorm.DB, err error) {
+	createdUser = db.Create(&user)
 	if err := createdUser.Error; err != nil {
 		return createdUser, err
 	}
 	return createdUser, nil
 }
 
-func Login(user *User) (int, []byte) {
-	authBackend := authentication.InitJWT
-}
-
-func LoginUser(db *gorm.DB, user User) (resp Response, err error) {
+func (user *User) LoginUser(db *gorm.DB) (resp Response, err error) {
 	var authUser User
-	resp.User = user
-	if err = db.Where("Email = ?", user.Email).First(authUser).Error; err != nil {
-		return
+	resp.User = *user
+	if err = db.Where("Email = ?", user.Email).First(&authUser).Error; err != nil {
+		resp.Message = "Either the user does not exists or the password is incorrect"
+		return resp, err
 	}
-
-	expiresAt := time.Now().Add(time.Minute * 100000).Unix()
-	errf := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(authUser.Password))
+	errf := bcrypt.CompareHashAndPassword([]byte(authUser.Password), []byte(user.Password))
 	if errf == bcrypt.ErrMismatchedHashAndPassword {
+		resp.Message = "Either the user does not exists or the password is incorrect"
 		return resp, errors.New("Passwords do not match")
 	}
+	expiresAt := time.Now().Add(time.Minute * 30)
 	us := UserSession{
-		UserID: authUser.ID,
-		Name:   authUser.Name,
-		Email:  authUser.Email,
+		UserID:    authUser.ID,
+		Firstname: authUser.Firstname,
+		Lastname:  authUser.Lastname,
+		Email:     authUser.Email,
 		StandardClaims: &jwt.StandardClaims{
-			ExpiresAt: expiresAt,
+			ExpiresAt: expiresAt.Unix(),
 		},
 	}
 
@@ -68,13 +78,18 @@ func LoginUser(db *gorm.DB, user User) (resp Response, err error) {
 
 	tokenString, err := token.SignedString([]byte("secret"))
 	if err != nil {
-		return
+		resp.Message = "Either the user does not exists or the password is incorrect"
+		return resp, errors.New("not able to sign string")
 	}
-	
+
 	resp.Status = false
 	resp.Message = "logged in"
 	resp.Token = tokenString
+	resp.ExpiresAt = expiresAt
 	resp.User = authUser
+	user.Firstname = authUser.Firstname
+	user.Lastname = authUser.Lastname
+
 	return resp, nil
 
 }

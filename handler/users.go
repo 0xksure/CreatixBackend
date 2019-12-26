@@ -1,18 +1,6 @@
 package handler
 
-import (
-	"context"
-	"encoding/json"
-	"fmt"
-	"net/http"
-	"os"
-
-	"github.com/dgrijalva/jwt-go"
-	"github.com/gorilla/mux"
-	"github.com/kristofhb/CreatixBackend/models"
-	"github.com/kristofhb/CreatixBackend/utils"
-)
-
+/*
 func (a *RestAPI) Users(r *mux.Router) {
 	r.HandleFunc("/api/v1/user/new", a.CreateAccount).Methods("POST")
 	r.HandleFunc("/api/v1/user/login", a.Authenticate).Methods("POST")
@@ -110,3 +98,4 @@ func (a RestAPI) JwtAuthentication(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r)
 	})
 }
+*/
