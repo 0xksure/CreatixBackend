@@ -3,7 +3,9 @@ package app
 import (
 	"fmt"
 	"log"
+	"net"
 	"net/http"
+	"net/smtp"
 
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
@@ -23,6 +25,7 @@ type App struct {
 	logger   *logging.StandardLogger
 	user     *models.User
 	feedback *models.Feedback
+	smpt     *smtp.Client
 }
 
 type (
@@ -46,6 +49,10 @@ func (a *App) New(cfg *config.Config) {
 	a.db.Debug().AutoMigrate(&models.Clap{})
 	a.db.Debug().AutoMigrate(&models.Comment{})
 	a.db.Debug().AutoMigrate(&models.Feedback{})
+
+	// SMTP client
+	host, _, _ := net.SplitHostPort(cfg.SMTPServer)
+	auth := smtp.PlainAuth("", "username@example.tld", "password", host)
 
 	r := mux.NewRouter().StrictSlash(true)
 	//r.Use(CommonMiddleware)

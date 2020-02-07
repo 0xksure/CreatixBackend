@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
+	"github.com/google/uuid"
 	"github.com/jinzhu/gorm"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -16,6 +17,16 @@ type User struct {
 	Birthday  time.Time
 	Email     string `gorm:"type:varchar(100);unique_index"`
 	Password  string `json:"password"`
+}
+
+type PasswordRequest struct {
+	Email string
+}
+
+type PasswordChangeRequest struct {
+	gorm.Model
+	ReqID  string
+	UserID uint
 }
 
 type UserInformation struct {
@@ -49,6 +60,37 @@ func (user *User) CreateUser(db *gorm.DB) (createdUser *gorm.DB, err error) {
 		return createdUser, err
 	}
 	return createdUser, nil
+}
+
+func (pr *PasswordRequest) ForgotPassword(db *gorm.DB) (resp Response, err error) {
+	// Create New password request
+	var user User
+	if err = db.Where("Email = ?", pr.Email).First(&user).Error; err != nil {
+		resp.Message = "Either the user does not exists or the password is incorrect"
+		return resp, err
+	}
+
+	// Create request ID
+	guid, err := uuid.NewRandom()
+	if err != nil {
+		resp.Message = "Either the user does not exists or the password is incorrect"
+		return resp, err
+	}
+
+	// Has gui
+	hashedGuid, err := bcrypt.GenerateFromPassword([]byte(guid.String()), bcrypt.DefaultCost)
+	if err != nil {
+		resp.Message = "Either the user does not exists or the password is incorrect"
+		return resp, err
+	}
+
+	pce := &PasswordChangeRequest{
+		ReqID:  string(hashedGuid),
+		UserID: user.ID,
+	}
+
+	// send mail to user
+	net.smp
 }
 
 func (user *User) LoginUser(db *gorm.DB) (resp Response, err error) {

@@ -17,6 +17,10 @@ type Config struct {
 	DbHost        string
 	DbPort        string
 	OriginAllowed string
+	FromEmail     string
+	SMTPServer    string
+	SMTPPWD       string
+	SMTPUserName  string
 }
 
 // SetUpConfig sets up the correct configuration for the app
@@ -59,6 +63,28 @@ func SetUpConfig() (cfg *Config, err error) {
 		log.Printf("environment not set. Setting to dev")
 		env = "dev"
 	}
+	fromEmail := os.Getenv("from_email")
+	if env == "" {
+		log.Printf("environment not set. Setting to dev")
+		return &Config{}, errors.New("from email is not defined ")
+	}
+	smtpServer := os.Getenv("SMTP_SERVER")
+	if env == "" {
+		log.Printf("environment not set. Setting to dev")
+		return &Config{}, errors.New("smtp server is not defined ")
+	}
+
+	smtpPwd := os.Getenv("SMTP_PASSWORD")
+	if env == "" {
+		log.Printf("environment not set. Setting to dev")
+		return &Config{}, errors.New("smtp password is not defined ")
+	}
+
+	smtpUserName := os.Getenv("SMTP_USERNAME")
+	if env == "" {
+		log.Printf("environment not set. Setting to dev")
+		return &Config{}, errors.New("smtp user name is not defined ")
+	}
 	OriginAllowed := os.Getenv("ORIGIN_ALLOWED")
 
 	return &Config{
@@ -69,5 +95,9 @@ func SetUpConfig() (cfg *Config, err error) {
 		dbHost,
 		dbPort,
 		OriginAllowed,
+		fromEmail,
+		smtpServer,
+		smtpPwd,
+		smtpUserName,
 	}, nil
 }

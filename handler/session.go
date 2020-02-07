@@ -33,6 +33,7 @@ func (s Session) Handler(r *mux.Router) {
 	r.HandleFunc("/user/login", s.Login).Methods("POST")
 	r.HandleFunc("/user/logout", s.Logout).Methods("GET")
 	r.HandleFunc("/user/refresh", s.Refresh).Methods("POST")
+	r.HandleFunc("/user/forgot-password")
 
 }
 
@@ -41,7 +42,7 @@ func (s Session) Signup(w http.ResponseWriter, r *http.Request) {
 	err := json.NewDecoder(r.Body).Decode(&user)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		http.Error(w,err.Error(),http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	pass, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
@@ -97,6 +98,17 @@ func (s Session) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, &c)
 	w.Write([]byte("Old cookie deleted. Logget out!\n"))
+}
+
+func (s Session) ForgotPassword(w http.ResponseWriter, r *http.Request) {
+	var forgotpassword models.PasswordRequest
+	err := json.NewDecoder(r.Body).Decode(&forgotpassword)
+	if err != nil {
+		s.Logging.Unsuccessful("not able to parse user", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 }
 
 func (s Session) Refresh(w http.ResponseWriter, r *http.Request) {
