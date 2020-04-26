@@ -20,7 +20,10 @@ func main() {
 		return
 	}
 
-	a := app.App{}
-	a.New(cfg)
+	a, err := app.New(cfg)
+	if err != nil {
+		standardLogger.Error(err)
+	}
+
 	a.Run()
 }

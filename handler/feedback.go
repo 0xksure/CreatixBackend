@@ -1,29 +1,28 @@
 package handler
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 
 	"github.com/kristofhb/CreatixBackend/models"
+	"github.com/labstack/echo"
 
 	"github.com/gorilla/mux"
-	"github.com/jinzhu/gorm"
 	"github.com/kristofhb/CreatixBackend/config"
 	"github.com/kristofhb/CreatixBackend/logging"
 	"github.com/kristofhb/CreatixBackend/middleware"
 )
 
 type RestAPI struct {
-	DB       *gorm.DB
-	Logging  *logging.StandardLogger
-	Cfg      *config.Config
-	User     *models.User
-	Feedback *models.Feedback
+	DB      *sql.DB
+	Logging *logging.StandardLogger
+	Cfg     *config.Config
 }
 
-func (api RestAPI) Handler(r *mux.Router) {
+func (api RestAPI) Handler(r *echo.Echo) {
 	r.Use(middleware.JwtVerify)
 	r.HandleFunc("/feedback", api.PostFeedback).Methods("POST")
 	r.HandleFunc("/user/feedback", api.GetUserFeedback).Methods("GET")

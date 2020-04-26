@@ -1,23 +1,23 @@
 package handler
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
+	"github.com/labstack/echo"
 
 	"github.com/kristofhb/CreatixBackend/config"
 
-	"github.com/gorilla/mux"
-	"github.com/jinzhu/gorm"
 	"github.com/kristofhb/CreatixBackend/logging"
 	"github.com/kristofhb/CreatixBackend/models"
 	"golang.org/x/crypto/bcrypt"
 )
 
 type Session struct {
-	DB      *gorm.DB
+	DB      *sql.DB
 	Logging *logging.StandardLogger
 	Cfg     *config.Config
 	User    *models.User
@@ -28,57 +28,48 @@ type HttpResponse struct {
 	User    models.UserSession
 }
 
-func (s Session) Handler(r *mux.Router) {
-	r.HandleFunc("/user/signup", s.Signup).Methods("POST")
-	r.HandleFunc("/user/login", s.Login).Methods("POST")
-	r.HandleFunc("/user/logout", s.Logout).Methods("GET")
-	r.HandleFunc("/user/refresh", s.Refresh).Methods("POST")
-	r.HandleFunc("/user/forgot-password")
-
+func (s Session) Handler(e *echo.Group) {
+	e.POST("/user/signup", s.Signup)
+	e.POST("/user/login", s.Login)
+	e.POST("/user/refresh", s.Refresh)
+	e.GET("/user/logout", s.Logout)
 }
 
-func (s Session) Signup(w http.ResponseWriter, r *http.Request) {
+// Signup signups the new user
+func (s Session) Signup(c echo.Context) error {
 	var user models.User
-	err := json.NewDecoder(r.Body).Decode(&user)
+
+	err := c.Bind(user)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+		s.Logging.Unsuccessful("could not parse user data", err)
+		return c.String(http.StatusBadRequest, "could not bind data")
 	}
 	pass, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
 	if err != nil {
 		s.Logging.Unsuccessful("not able to encrypt password", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return c.String(http.StatusBadRequest, "could not generate hashed password")
 	}
 	user.Password = string(pass)
-	createdUser, err := user.CreateUser(s.DB)
+	err = user.CreateUser(c.Request().Context(), s.DB)
 	if err != nil {
 		s.Logging.Unsuccessful("not able to create user ", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return c.String(http.StatusBadRequest, "could not create user")
 	}
-	if err = json.NewEncoder(w).Encode(createdUser); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		s.Logging.Unsuccessful("not able to write out created user", err)
-		return
-	}
+	return c.String(http.StatusOK, "user created")
 }
 
-func (s Session) Login(w http.ResponseWriter, r *http.Request) {
+// Login checks whether the user exists and creates a cookie
+func (s Session) Login(c echo.Context) error {
 	user := s.User
-	err := json.NewDecoder(r.Body).Decode(&user)
+	err := c.Bind(user)
 	if err != nil {
 		s.Logging.Unsuccessful("not able to parse user", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return c.String(http.StatusBadRequest, "not able to parse user")
 	}
-	var resp models.Response
-	resp, err = user.LoginUser(s.DB)
+	resp, err := user.LoginUser(c.Request().Context(), s.DB, user.Email)
 	if err != nil {
 		s.Logging.Unsuccessful("not able to log in user", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return c.String(http.StatusBadRequest, "not able to parse user")
 	}
 	cookie := &http.Cookie{
 		Name:    "token",

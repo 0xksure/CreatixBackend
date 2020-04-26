@@ -6,7 +6,6 @@ import (
 	"net/http"
 
 	jwt "github.com/dgrijalva/jwt-go"
-	"github.com/kristofhb/CreatixBackend/models"
 )
 
 type Exception struct {
@@ -27,7 +26,7 @@ func JwtVerify(next http.Handler) http.Handler {
 			return
 		}
 
-		tk := &models.UserSession{}
+		tk := &utils.UserSession{}
 		tknStr := c.Value
 		tkn, err := jwt.ParseWithClaims(tknStr, tk, func(token *jwt.Token) (interface{}, error) {
 			return []byte("secret"), nil
