@@ -4,7 +4,14 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+
+	"github.com/kristofhb/CreatixBackend/models"
 )
+
+type HttpResponse struct {
+	Message string
+	User    models.UserSession
+}
 
 func Message(status bool, message string) map[string]interface{} {
 	return map[string]interface{}{"status": status, "message": message}

@@ -2,14 +2,13 @@ package handler
 
 import (
 	"database/sql"
-	"encoding/json"
 	"net/http"
 	"time"
 
-	"github.com/dgrijalva/jwt-go"
 	"github.com/labstack/echo"
 
 	"github.com/kristofhb/CreatixBackend/config"
+	"github.com/kristofhb/CreatixBackend/utils"
 
 	"github.com/kristofhb/CreatixBackend/logging"
 	"github.com/kristofhb/CreatixBackend/models"
@@ -17,17 +16,19 @@ import (
 )
 
 type Session struct {
-	DB      *sql.DB
-	Logging *logging.StandardLogger
-	Cfg     *config.Config
-	User    *models.User
+	DB          *sql.DB
+	Logging     *logging.StandardLogger
+	Cfg         *config.Config
+	UserSession models.UserSession
 }
 
-type HttpResponse struct {
-	Message string
-	User    models.UserSession
+// LoginRequest contains the login credentials
+type LoginRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
 }
 
+// Handler sets up the session endpoints
 func (s Session) Handler(e *echo.Group) {
 	e.POST("/user/signup", s.Signup)
 	e.POST("/user/login", s.Login)
@@ -44,29 +45,32 @@ func (s Session) Signup(c echo.Context) error {
 		s.Logging.Unsuccessful("could not parse user data", err)
 		return c.String(http.StatusBadRequest, "could not bind data")
 	}
+
 	pass, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
 	if err != nil {
 		s.Logging.Unsuccessful("not able to encrypt password", err)
 		return c.String(http.StatusBadRequest, "could not generate hashed password")
 	}
+
 	user.Password = string(pass)
-	err = user.CreateUser(c.Request().Context(), s.DB)
+	err = s.UserSession.CreateUser(c.Request().Context(), s.DB, user)
 	if err != nil {
 		s.Logging.Unsuccessful("not able to create user ", err)
 		return c.String(http.StatusBadRequest, "could not create user")
 	}
+
 	return c.String(http.StatusOK, "user created")
 }
 
 // Login checks whether the user exists and creates a cookie
 func (s Session) Login(c echo.Context) error {
-	user := s.User
-	err := c.Bind(user)
+	var loginRequest LoginRequest
+	err := c.Bind(loginRequest)
 	if err != nil {
 		s.Logging.Unsuccessful("not able to parse user", err)
 		return c.String(http.StatusBadRequest, "not able to parse user")
 	}
-	resp, err := user.LoginUser(c.Request().Context(), s.DB, user.Email)
+	resp, err := s.UserSession.LoginUser(c.Request().Context(), s.DB, loginRequest.Email, loginRequest.Password)
 	if err != nil {
 		s.Logging.Unsuccessful("not able to log in user", err)
 		return c.String(http.StatusBadRequest, "not able to parse user")
@@ -77,94 +81,64 @@ func (s Session) Login(c echo.Context) error {
 		Expires: resp.ExpiresAt,
 		Path:    "/v0",
 	}
-	http.SetCookie(w, cookie)
-	json.NewEncoder(w).Encode(resp)
+	c.SetCookie(cookie)
+	return c.JSON(http.StatusOK, resp)
 }
 
-func (s Session) Logout(w http.ResponseWriter, r *http.Request) {
-	c := http.Cookie{
+// Logout will set a new invalid cookie
+func (s Session) Logout(c echo.Context) error {
+	cookie := &http.Cookie{
 		Name:   "token",
 		MaxAge: -1,
 		Path:   "/v0",
 	}
-	http.SetCookie(w, &c)
-	w.Write([]byte("Old cookie deleted. Logget out!\n"))
+	c.SetCookie(cookie)
+	return c.String(http.StatusOK, "old cookie deleted, logged out")
 }
 
-func (s Session) ForgotPassword(w http.ResponseWriter, r *http.Request) {
+// ForgotPassword will if the user exists send a
+// new passwordlink
+func (s Session) ForgotPassword(c echo.Context) error {
 	var forgotpassword models.PasswordRequest
-	err := json.NewDecoder(r.Body).Decode(&forgotpassword)
+	err := c.Bind(forgotpassword)
 	if err != nil {
 		s.Logging.Unsuccessful("not able to parse user", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+		return c.String(http.StatusBadRequest, "not able to parse email")
 	}
+
+	resp, err := s.UserSession.ForgotPassword(c, s.DB, forgotpassword.Email)
+	if err != nil {
+		return c.String(http.StatusInternalServerError, "not able to generate new password")
+	}
+
+	return c.JSON(http.StatusOK, resp)
 
 }
 
-func (s Session) Refresh(w http.ResponseWriter, r *http.Request) {
-	c, err := r.Cookie("token")
+// Refresh refreshes the cookie provided by generating a new one
+// and returning it
+func (s Session) Refresh(c echo.Context) error {
+	cookie, err := c.Cookie("token")
 	if err != nil {
-		if err == http.ErrNoCookie {
-			w.WriteHeader(http.StatusUnauthorized)
-			s.Logging.Unsuccessful("not cookie set", err)
-			w.Write([]byte("no cookie set"))
-			return
-		}
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(HttpResponse{Message: "not able to find cookie"})
-		s.Logging.Unsuccessful("not able to find cookie", err)
-		return
+		return c.JSON(http.StatusBadRequest, utils.HttpResponse{Message: "invalid cookie"})
 	}
 
-	tknStr := c.Value
-	us := &models.UserSession{}
-	tkn, err := jwt.ParseWithClaims(tknStr, us, func(token *jwt.Token) (interface{}, error) {
-		return []byte("secret"), nil
-	})
-	if err != nil {
-		if err == jwt.ErrSignatureInvalid {
-			w.WriteHeader(http.StatusUnauthorized)
-			json.NewEncoder(w).Encode(HttpResponse{Message: "not able to parse"})
-			s.Logging.Unsuccessful("not able to parse", err)
-			return
-		}
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(HttpResponse{Message: "bad request"})
-		s.Logging.Unsuccessful("bad request", err)
-		return
-	}
-
-	if !tkn.Valid {
-		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(HttpResponse{Message: "token not valid"})
-		s.Logging.Unsuccessful("token not valid", err)
-		return
-	}
-
-	if time.Unix(us.ExpiresAt, 0).Sub(time.Now()) > 2*time.Minute {
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(HttpResponse{Message: "previous token has not expired", User: *us})
-		s.Logging.Unsuccessful("previous token has not expired", err)
-		return
+	tokenValue := cookie.Value
+	ok, err := utils.IsTokenValid(tokenValue, []byte(s.Cfg.JwtSecret))
+	if err != nil || !ok {
+		return c.JSON(http.StatusBadRequest, utils.HttpResponse{Message: "invalid cookie"})
 	}
 
 	expiresAt := time.Now().Add(time.Minute * 5)
-	us.ExpiresAt = expiresAt.Unix()
-	// Create new token
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, us)
-	tokenString, err := token.SignedString(tkn)
+	newToken, err := utils.NewToken(expiresAt, "1", []byte(s.Cfg.JwtSecret))
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(HttpResponse{Message: "not able to generate token string"})
-		s.Logging.Unsuccessful("creatix.auth.refresh, not able to generate token string", err)
-		return
+		return c.JSON(http.StatusBadRequest, utils.HttpResponse{Message: "could not generate new token"})
 	}
-	http.SetCookie(w, &http.Cookie{
+	c.SetCookie(&http.Cookie{
 		Name:    "token",
-		Value:   tokenString,
+		Value:   newToken,
 		Expires: expiresAt,
 		Path:    "/v0",
 	})
-
+	return c.JSON(http.StatusOK, utils.HttpResponse{Message: "ok"})
 }

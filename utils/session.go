@@ -13,7 +13,7 @@ type JwtSession struct {
 }
 
 type Claims struct {
-	UserID uint
+	UserID string
 	jwt.StandardClaims
 }
 
@@ -25,7 +25,7 @@ func NewJwtSession(secret []byte, expiryMin int) *JwtSession {
 }
 
 // NewToken creates a new token with a default claim
-func (js *JwtSession) NewToken(expiresAt time.Time, userID uint, secret []byte) (string, error) {
+func NewToken(expiresAt time.Time, userID string, secret []byte) (string, error) {
 
 	claims := Claims{
 		UserID: userID,
@@ -35,33 +35,45 @@ func (js *JwtSession) NewToken(expiresAt time.Time, userID uint, secret []byte) 
 		},
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	ss, err := token.SignedString(secret)
+	token := jwt.NewWithClaims(jwt.GetSigningMethod("HS256"), claims)
+	tokenString, err := token.SignedString(secret)
 	if err != nil {
-		return ss, err
+		return tokenString, err
 	}
 
-	return ss, nil
+	return tokenString, nil
 
 }
 
 // VerifyToken parses the token using the given secret to check if the token is valid
-func (c Claims) VerifyToken(tokenString string, secret []byte) error {
-	tkn, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
+func IsTokenValid(tokenString string, secret []byte) (bool, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
 		return secret, nil
 	})
 	if err != nil {
-		return errors.Wrap(err, "user is not authorized: token could not be parsed")
+		if err == jwt.ErrSignatureInvalid {
+			return false, errors.Wrap(err, "signature invalid")
+		}
+		return false, err
 	}
 
-	if !tkn.Valid {
-		return errors.New("user is not authorized: token is not valid")
+	if !token.Valid {
+		return false, errors.New("toekn is invalid")
 	}
 
-	return nil
+	claims, ok := token.Claims.(*Claims)
+	if !ok {
+		return false, errors.New("could not get claims")
+	}
+
+	if time.Unix(claims.ExpiresAt, 0).Sub(time.Now()) > 2*time.Minute {
+		return false, errors.New("invalid token")
+	}
+
+	return true, nil
 }
 
-func (c Claims) RefreshToken(tokenString string, secret []byte) error {
+func RefreshToken(tokenString string, secret []byte) error {
 
 	err := c.VerifyToken(tokenString, secret)
 	if err != nil {

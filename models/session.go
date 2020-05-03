@@ -6,18 +6,26 @@ import (
 	"errors"
 	"time"
 
-	"github.com/dgrijalva/jwt-go"
 	"github.com/google/uuid"
 	"github.com/jinzhu/gorm"
+	"github.com/kristofhb/CreatixBackend/utils"
 	"golang.org/x/crypto/bcrypt"
 )
 
+//
+var SigningKey = []byte("secret")
+
 type User struct {
-	Firstname string
-	Lastname  string
-	Birthday  time.Time
-	Email     string `gorm:"type:varchar(100);unique_index"`
-	Password  string `json:"password"`
+	ID        uint      `json:"id"`
+	Firstname string    `json:"firstname"`
+	Lastname  string    `json:"lastname"`
+	Birthday  time.Time `json:"birthday"`
+	Email     string    `json:"email"`
+	Password  string    `json:"password"`
+}
+
+type UserSession struct {
+	JwtSecret string
 }
 
 type PasswordRequest struct {
@@ -55,7 +63,7 @@ var createUseQuery = `
 `
 
 // CreateUser creates a new user in the database
-func (user *User) CreateUser(ctx context.Context, db *sql.DB) error {
+func (u UserSession) CreateUser(ctx context.Context, db *sql.DB, user User) error {
 	tx, err := db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return err
@@ -80,7 +88,8 @@ func (user *User) CreateUser(ctx context.Context, db *sql.DB) error {
 
 var findUserByEmailQuery = `
 	SELECT 
-	Firstname
+	ID
+	,Firstname
 	,Lastname
 	,Birthday
 	,Email
@@ -107,34 +116,21 @@ func findUserByEmail(ctx context.Context, db *sql.DB, email string) (User, error
 
 // LoginUser checks if the user given password and username exists
 // if it does
-func (user *User) LoginUser(ctx context.Context, db *sql.DB, userEmail string) (Response, error) {
-
+func (u UserSession) LoginUser(ctx context.Context, db *sql.DB, userEmail string, password string) (Response, error) {
 	var resp Response
-	u, err := findUserByEmail(ctx, db, user.Email)
+	existingUser, err := findUserByEmail(ctx, db, userEmail)
 	if err != nil {
 		return resp, err
 	}
 
-	errf := bcrypt.CompareHashAndPassword([]byte(u.Password), []byte(user.Password))
+	errf := bcrypt.CompareHashAndPassword([]byte(existingUser.Password), []byte(password))
 	if errf == bcrypt.ErrMismatchedHashAndPassword {
 		resp.Message = "Either the user does not exists or the password is incorrect"
 		return resp, errors.New("passwords do not match")
 	}
 
 	expiresAt := time.Now().Add(time.Minute * 30)
-	us := UserSession{
-		UserID:    authUser.ID,
-		Firstname: authUser.Firstname,
-		Lastname:  authUser.Lastname,
-		Email:     authUser.Email,
-		StandardClaims: &jwt.StandardClaims{
-			ExpiresAt: expiresAt.Unix(),
-		},
-	}
-
-	token := jwt.NewWithClaims(jwt.GetSigningMethod("HS256"), us)
-
-	tokenString, err := token.SignedString([]byte("secret"))
+	tokenString, err := utils.NewToken(expiresAt, existingUser.ID, []byte(u.JwtSecret))
 	if err != nil {
 		resp.Message = "Either the user does not exists or the password is incorrect"
 		return resp, errors.New("not able to sign string")
@@ -144,18 +140,16 @@ func (user *User) LoginUser(ctx context.Context, db *sql.DB, userEmail string) (
 	resp.Message = "logged in"
 	resp.Token = tokenString
 	resp.ExpiresAt = expiresAt
-	resp.User = authUser
-	user.Firstname = authUser.Firstname
-	user.Lastname = authUser.Lastname
 
 	return resp, nil
-
 }
 
-func (pr *PasswordRequest) ForgotPassword(db *gorm.DB) (resp Response, err error) {
+// ForgotPassword send a new password link
+func (u UserSession) ForgotPassword(ctx context.Context, db *sql.DB, email string) (resp Response, err error) {
 	// Create New password request
 	var user User
-	if err = db.Where("Email = ?", pr.Email).First(&user).Error; err != nil {
+	user, err = findUserByEmail(ctx, db, email)
+	if err != nil {
 		resp.Message = "Either the user does not exists or the password is incorrect"
 		return resp, err
 	}
@@ -168,17 +162,17 @@ func (pr *PasswordRequest) ForgotPassword(db *gorm.DB) (resp Response, err error
 	}
 
 	// Has gui
-	hashedGuid, err := bcrypt.GenerateFromPassword([]byte(guid.String()), bcrypt.DefaultCost)
+	hashedGUID, err := bcrypt.GenerateFromPassword([]byte(guid.String()), bcrypt.DefaultCost)
 	if err != nil {
 		resp.Message = "Either the user does not exists or the password is incorrect"
 		return resp, err
 	}
 
 	pce := &PasswordChangeRequest{
-		ReqID:  string(hashedGuid),
+		ReqID:  string(hashedGUID),
 		UserID: user.ID,
 	}
 
 	// send mail to user
-	net.smp
+	return resp, nil
 }

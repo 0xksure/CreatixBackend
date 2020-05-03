@@ -7,11 +7,11 @@ import (
 	"time"
 
 	"github.com/golang-migrate/migrate/v4"
-	"github.com/gorilla/handlers"
 	_ "github.com/jinzhu/gorm/dialects/postgres"
 	"github.com/kristofhb/CreatixBackend/config"
 	"github.com/kristofhb/CreatixBackend/handler"
 	"github.com/kristofhb/CreatixBackend/logging"
+	"github.com/kristofhb/CreatixBackend/models"
 	"github.com/labstack/echo"
 	"github.com/labstack/echo/middleware"
 	"github.com/pkg/errors"
@@ -92,29 +92,33 @@ func New(cfg *config.Config) (App, error) {
 	return a, nil
 }
 
+// Run starts up the application
 func (a *App) Run() {
 	port := a.cfg.DbPort
 	if port == "" {
 		port = "8000"
 	}
 
-	authSubrouter := a.echo.Group("/v0/auth",middleware.CORS)
+	authSubrouter := a.echo.Group("/v0/auth", middleware.CORS())
 	sessionAPI := handler.Session{
 		DB:      a.DB,
 		Logging: a.logger,
 		Cfg:     a.cfg,
+		UserSession: models.UserSession{
+			JwtSecret: a.cfg.JwtSecret,
+		},
 	}
 	sessionAPI.Handler(authSubrouter)
 
-	
-	openSubrouter := a.echo.Group("/v0/",middleware.CORS)
+	openSubrouter := a.echo.Group("/v0/", middleware.CORS())
 	restAPI := handler.RestAPI{
-		DB:      a.DB,
-		Logging: a.logger,
-		Cfg:     a.cfg,
+		DB:       a.DB,
+		Logging:  a.logger,
+		Cfg:      a.cfg,
+		Feedback: models.Feedback{},
 	}
 
 	restAPI.Handler(openSubrouter)
 	// REST API handler
-	log.Fatal(a.echo.Start(port)
+	log.Fatal(a.echo.Start(port))
 }

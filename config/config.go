@@ -20,6 +20,7 @@ type Config struct {
 	SMTPServer    string `default:""`
 	SMTPPWD       string `default:""`
 	SMTPUserName  string `default:""`
+	JwtSecret     string `default:""`
 }
 
 // SetUpConfig sets up the correct configuration for the app

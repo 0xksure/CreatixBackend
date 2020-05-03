@@ -1,4 +1,4 @@
-CREATE TABLE user
+CREATE TABLE USER
 (
   ID integer PRIMARY KEY,
   Firstname varchar

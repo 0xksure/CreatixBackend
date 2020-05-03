@@ -6,24 +6,28 @@ import (
 	"net/http"
 
 	jwt "github.com/dgrijalva/jwt-go"
+	"github.com/kristofhb/CreatixBackend/utils"
+	"github.com/labstack/echo"
 )
 
 type Exception struct {
 	Message string `json:"Message"`
 }
 
-func JwtVerify(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		c, err := r.Cookie("token")
+func JwtVerify(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		err := next(c)
+		if err != nil{
+			return c.JSON(http.StatusInternalServerError,utils.HttpResponse{Message:"could not serve http requests"})
+		}
+		cookie, err := c.Cookie("token")
 		if err != nil {
 			if err == http.ErrNoCookie {
-				w.WriteHeader(http.StatusUnauthorized)
-				json.NewEncoder(w).Encode(Exception{Message: "unauthorized: missing token cookie"})
-				return
+				return c.JSON(http.StatusUnauthorized,"unauthorized: missing token")
 			}
 			w.WriteHeader(http.StatusBadRequest)
 			json.NewEncoder(w).Encode(Exception{Message: "bad request"})
-			return
+			return c.JSON(http.StatusBadRequest,"bad request")
 		}
 
 		tk := &utils.UserSession{}
