@@ -7,18 +7,19 @@ import (
 
 	"github.com/labstack/echo"
 
-	"github.com/kristofhb/CreatixBackend/config"
-	"github.com/kristofhb/CreatixBackend/utils"
+	"github.com/kristohberg/CreatixBackend/config"
+	"github.com/kristohberg/CreatixBackend/utils"
+	"github.com/kristohberg/CreatixBackend/web"
 
-	"github.com/kristofhb/CreatixBackend/logging"
-	"github.com/kristofhb/CreatixBackend/models"
+	"github.com/kristohberg/CreatixBackend/logging"
+	"github.com/kristohberg/CreatixBackend/models"
 	"golang.org/x/crypto/bcrypt"
 )
 
 type Session struct {
 	DB          *sql.DB
 	Logging     *logging.StandardLogger
-	Cfg         *config.Config
+	Cfg         config.Config
 	UserSession models.UserSession
 }
 
@@ -40,7 +41,7 @@ func (s Session) Handler(e *echo.Group) {
 func (s Session) Signup(c echo.Context) error {
 	var user models.User
 
-	err := c.Bind(user)
+	err := c.Bind(&user)
 	if err != nil {
 		s.Logging.Unsuccessful("could not parse user data", err)
 		return c.String(http.StatusBadRequest, "could not bind data")
@@ -65,7 +66,7 @@ func (s Session) Signup(c echo.Context) error {
 // Login checks whether the user exists and creates a cookie
 func (s Session) Login(c echo.Context) error {
 	var loginRequest LoginRequest
-	err := c.Bind(loginRequest)
+	err := c.Bind(&loginRequest)
 	if err != nil {
 		s.Logging.Unsuccessful("not able to parse user", err)
 		return c.String(http.StatusBadRequest, "not able to parse user")
@@ -73,7 +74,7 @@ func (s Session) Login(c echo.Context) error {
 	resp, err := s.UserSession.LoginUser(c.Request().Context(), s.DB, loginRequest.Email, loginRequest.Password)
 	if err != nil {
 		s.Logging.Unsuccessful("not able to log in user", err)
-		return c.String(http.StatusBadRequest, "not able to parse user")
+		return c.String(http.StatusBadRequest, "no user")
 	}
 	cookie := &http.Cookie{
 		Name:    "token",
@@ -98,7 +99,7 @@ func (s Session) Logout(c echo.Context) error {
 
 // ForgotPassword will if the user exists send a
 // new passwordlink
-func (s Session) ForgotPassword(c echo.Context) error {
+/*func (s Session) ForgotPassword(c echo.Context) error {
 	var forgotpassword models.PasswordRequest
 	err := c.Bind(forgotpassword)
 	if err != nil {
@@ -114,25 +115,26 @@ func (s Session) ForgotPassword(c echo.Context) error {
 	return c.JSON(http.StatusOK, resp)
 
 }
+*/
 
 // Refresh refreshes the cookie provided by generating a new one
 // and returning it
 func (s Session) Refresh(c echo.Context) error {
 	cookie, err := c.Cookie("token")
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, utils.HttpResponse{Message: "invalid cookie"})
+		return c.JSON(http.StatusBadRequest, web.HttpResponse{Message: "invalid cookie"})
 	}
 
 	tokenValue := cookie.Value
 	ok, err := utils.IsTokenValid(tokenValue, []byte(s.Cfg.JwtSecret))
 	if err != nil || !ok {
-		return c.JSON(http.StatusBadRequest, utils.HttpResponse{Message: "invalid cookie"})
+		return c.JSON(http.StatusBadRequest, web.HttpResponse{Message: "invalid cookie"})
 	}
 
 	expiresAt := time.Now().Add(time.Minute * 5)
 	newToken, err := utils.NewToken(expiresAt, "1", []byte(s.Cfg.JwtSecret))
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, utils.HttpResponse{Message: "could not generate new token"})
+		return c.JSON(http.StatusBadRequest, web.HttpResponse{Message: "could not generate new token"})
 	}
 	c.SetCookie(&http.Cookie{
 		Name:    "token",
@@ -140,5 +142,5 @@ func (s Session) Refresh(c echo.Context) error {
 		Expires: expiresAt,
 		Path:    "/v0",
 	})
-	return c.JSON(http.StatusOK, utils.HttpResponse{Message: "ok"})
+	return c.JSON(http.StatusOK, web.HttpResponse{Message: "ok"})
 }

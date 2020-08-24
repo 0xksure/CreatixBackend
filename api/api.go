@@ -2,18 +2,22 @@ package api
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
 
 	"github.com/golang-migrate/migrate/v4"
-	_ "github.com/jinzhu/gorm/dialects/postgres"
-	"github.com/kristofhb/CreatixBackend/config"
-	"github.com/kristofhb/CreatixBackend/handler"
-	"github.com/kristofhb/CreatixBackend/logging"
-	"github.com/kristofhb/CreatixBackend/models"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/kristohberg/CreatixBackend/config"
+	"github.com/kristohberg/CreatixBackend/handler"
+	"github.com/kristohberg/CreatixBackend/logging"
+	jwtmiddleware "github.com/kristohberg/CreatixBackend/middleware"
+	"github.com/kristohberg/CreatixBackend/models"
 	"github.com/labstack/echo"
 	"github.com/labstack/echo/middleware"
+	_ "github.com/lib/pq"
 	"github.com/pkg/errors"
 )
 
@@ -21,7 +25,7 @@ const ioTimeout = time.Second * 3
 const cacheWriteTimeout = time.Second * 30
 
 type App struct {
-	cfg    *config.Config
+	cfg    config.Config
 	echo   *echo.Echo
 	DB     *sql.DB
 	logger *logging.StandardLogger
@@ -35,7 +39,7 @@ type (
 func ConnectDB(cfg *config.Config) (*sql.DB, error) {
 	db, err := sql.Open("postgres", cfg.DbURI)
 	if err != nil {
-		return db, err
+		return nil, err
 	}
 
 	db.SetConnMaxLifetime(0)
@@ -44,24 +48,24 @@ func ConnectDB(cfg *config.Config) (*sql.DB, error) {
 	return db, nil
 }
 
-func (a *App) MigrateUpDatabase(cfg *config.Config) error {
-	m, err := migrate.New("file://db/migrations", a.cfg.DbURI)
+func (a *App) MigrateUpDatabase(cfg config.Config) error {
+	m, err := migrate.New("file://db/migrations", cfg.DbURI)
 	if err != nil {
 		return err
 	}
 
-	if err = m.Up(); err != nil {
+	if err = m.Up(); err != nil && err != migrate.ErrNoChange {
 		return err
 	}
 	return nil
 }
 
 // New sets up a new app
-func New(cfg *config.Config) (App, error) {
+func New(cfg config.Config) (App, error) {
 	var a App
 	a.logger = logging.NewLogger()
 
-	db, err := ConnectDB(cfg)
+	db, err := ConnectDB(&cfg)
 	if err != nil {
 		return a, errors.Wrap(err, "could not establish contact with the database")
 	}
@@ -70,13 +74,20 @@ func New(cfg *config.Config) (App, error) {
 	if err != nil {
 		return a, errors.Wrap(err, "could not ping database")
 	}
-	err = a.MigrateUpDatabase(a.cfg)
+	err = a.MigrateUpDatabase(cfg)
 	if err != nil {
+		fmt.Println("err: ", err)
 		return a, errors.Wrap(err, "not able to migrate up database")
 	}
 	a.DB = db
+	fmt.Println("db1: ", a.DB)
+	a.cfg = cfg
 
-	// set up echo
+	return a, nil
+}
+
+// Run starts up the application
+func (a App) Run() {
 	e := echo.New()
 	e.Server.WriteTimeout = ioTimeout
 	e.Server.ReadTimeout = ioTimeout
@@ -84,41 +95,33 @@ func New(cfg *config.Config) (App, error) {
 	e.HidePort = true
 
 	// Set up global middleware
-	e.Use(middleware.Recover(), middleware.CSRF())
+	e.Use(middleware.Recover())
 
-	a.echo = e
-	a.cfg = cfg
-
-	return a, nil
-}
-
-// Run starts up the application
-func (a *App) Run() {
-	port := a.cfg.DbPort
+	port := a.cfg.ListenPort
 	if port == "" {
-		port = "8000"
+		port = ":8000"
 	}
+	userSession := &models.UserSession{JwtSecret: a.cfg.JwtSecret}
+	openSubrouter := e.Group("/v0")
+	restAPI := handler.RestAPI{
+		DB:          a.DB,
+		Logging:     a.logger,
+		Cfg:         a.cfg,
+		Feedback:    models.Feedback{},
+		UserSession: userSession,
+		Middleware:  &jwtmiddleware.Middleware{},
+	}
+	restAPI.Handler(openSubrouter)
 
-	authSubrouter := a.echo.Group("/v0/auth", middleware.CORS())
+	authSubrouter := e.Group("/v0/auth")
 	sessionAPI := handler.Session{
-		DB:      a.DB,
-		Logging: a.logger,
-		Cfg:     a.cfg,
-		UserSession: models.UserSession{
-			JwtSecret: a.cfg.JwtSecret,
-		},
+		DB:          a.DB,
+		Logging:     a.logger,
+		Cfg:         a.cfg,
+		UserSession: *userSession,
 	}
 	sessionAPI.Handler(authSubrouter)
 
-	openSubrouter := a.echo.Group("/v0/", middleware.CORS())
-	restAPI := handler.RestAPI{
-		DB:       a.DB,
-		Logging:  a.logger,
-		Cfg:      a.cfg,
-		Feedback: models.Feedback{},
-	}
-
-	restAPI.Handler(openSubrouter)
 	// REST API handler
-	log.Fatal(a.echo.Start(port))
+	log.Fatal(e.Start(port))
 }

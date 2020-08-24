@@ -8,23 +8,24 @@ import (
 )
 
 type Config struct {
-	Env           string `default:"dev"`
+	Env           string `default:""`
 	DbUser        string `default:""`
 	DbPass        string `default:""`
 	DbName        string `default:""`
-	DbHost        string `default:"localhost"`
-	DbPort        string `default:"5432"`
-	DbURI         string
+	DbHost        string `default:""`
+	DbPort        string `default:""`
+	DbURI         string `default:""`
+	ListenPort    string `default:":8080"`
 	OriginAllowed string `default:""`
 	FromEmail     string `default:""`
 	SMTPServer    string `default:""`
 	SMTPPWD       string `default:""`
 	SMTPUserName  string `default:""`
-	JwtSecret     string `default:""`
+	JwtSecret     string `default:"secret"`
 }
 
 // SetUpConfig sets up the correct configuration for the app
-func SetUpConfig() (cfg *Config, err error) {
+func SetUpConfig() (cfg Config, err error) {
 
 	logrus.SetFormatter(&logrus.JSONFormatter{})
 	err = envconfig.Process("", &cfg)
@@ -32,7 +33,11 @@ func SetUpConfig() (cfg *Config, err error) {
 		return
 	}
 
-	cfg.DbURI = fmt.Sprintf("postgres://%s:%s/%s?user=%s&password=%s", cfg.DbHost, cfg.DbPort, cfg.DbName, cfg.DbUser, cfg.DbPass)
-
+	fmt.Println(cfg)
+	cfg.DbURI = fmt.Sprintf("postgres://%s:%s/%s?user=%s&password=%s&sslmode=disable", cfg.DbHost, cfg.DbPort, cfg.DbName, cfg.DbUser, cfg.DbPass)
+	/*cfg.DbURI = fmt.Sprintf("host=%s port=%s user=%s "+
+	"password=%s dbname=%s sslmode=disable",
+	cfg.DbHost, cfg.DbPort, cfg.DbUser, cfg.DbPass, cfg.DbName)
+	*/
 	return cfg, err
 }

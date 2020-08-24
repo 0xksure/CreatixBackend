@@ -2,36 +2,36 @@ package handler
 
 import (
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 
-	"github.com/kristofhb/CreatixBackend/models"
-	"github.com/kristofhb/CreatixBackend/utils"
+	jwtmiddleware "github.com/kristohberg/CreatixBackend/middleware"
+	"github.com/kristohberg/CreatixBackend/models"
+	"github.com/kristohberg/CreatixBackend/web"
 	"github.com/labstack/echo"
 
-	"github.com/gorilla/mux"
-	"github.com/kristofhb/CreatixBackend/config"
-	"github.com/kristofhb/CreatixBackend/logging"
-	"github.com/kristofhb/CreatixBackend/middleware"
+	"github.com/kristohberg/CreatixBackend/config"
+	"github.com/kristohberg/CreatixBackend/logging"
 )
 
 type RestAPI struct {
-	DB       *sql.DB
-	Logging  *logging.StandardLogger
-	Cfg      *config.Config
-	Feedback models.Feedback
+	DB          *sql.DB
+	Logging     *logging.StandardLogger
+	Cfg         config.Config
+	Feedback    models.Feedback
+	UserSession *models.UserSession
+	Middleware  *jwtmiddleware.Middleware
 }
 
 func (api RestAPI) Handler(e *echo.Group) {
-	e.Use(middleware.JwtVerify)
+	e.Use(api.Middleware.JwtVerify)
 	e.POST("/feedback", api.PostFeedback)
 	e.GET("/user/feedback", api.GetUserFeedback)
-	e.DELETE("/feedback/{fid}", api.DeleteFeedback)
-	e.PUT("/feedback/{fid}", api.UpdateFeedback)
-	e.POST("/user/feedback/{fid}/clap", api.ClapFeedback)
-	e.POST("/user/feedback/{fid}/comment", api.CommentFeedback)
+	e.DELETE("/feedback/:fid", api.DeleteFeedback)
+	e.PUT("/feedback", api.UpdateFeedback)
+	e.POST("/user/feedback/:fid/clap", api.ClapFeedback)
+	e.POST("/user/feedback/comment", api.CommentFeedback)
 }
 
 func validateFeedback(feedback models.Feedback) error {
@@ -46,21 +46,18 @@ func validateFeedback(feedback models.Feedback) error {
 }
 
 // PostFeedback posts feedback from user
-func (api RestAPI) PostFeedback(c echo.Context) error {
-	var feedback models.Feedback
-	err := c.Bind(feedback)
-	if err != nil {
-		api.Logging.Unsuccessful("creatix.feedback.postfeedback: not able to parse feedback", err)
-		return c.JSON(http.StatusBadRequest, utils.HttpResponse{Message: "not able to parse feedback"})
+func (api RestAPI) PostFeedback(c echo.Context) (err error) {
+	feedback := new(models.Feedback)
+	if err = c.Bind(feedback); err != nil {
+		return
 	}
-
-	err = feedback.CreateFeedback(c.Request().Context(), api.DB)
-	if err != nil {
+	feedback.UserID = api.Middleware.Uid
+	if err = feedback.CreateFeedback(c.Request().Context(), api.DB); err != nil {
+		fmt.Println("error in post feedback")
 		api.Logging.Unsuccessful("creatix.feedback.postfeedback: not able to save feedback", err)
-		return c.JSON(http.StatusBadRequest, utils.HttpResponse{Message: "not able to save feedback"})
+		return
 	}
-
-	return c.JSON(http.StatusOK, utils.HttpResponse{Message: "ok"})
+	return c.JSON(http.StatusOK, web.HttpResponse{Message: "posted feedback"})
 }
 
 // DeleteFeedback deletes feedback given an id
@@ -69,116 +66,66 @@ func (api RestAPI) DeleteFeedback(c echo.Context) error {
 	err := api.Feedback.DeleteFeedback(c.Request().Context(), api.DB, feedbackID)
 	if err != nil {
 		api.Logging.Unsuccessful("creatix.feedback.deletefeedback: not able to delete feedback", err)
-		return c.JSON(http.StatusBadRequest, utils.HttpResponse{Message: "not able to delete feedback"})
+		return c.JSON(http.StatusBadRequest, web.HttpResponse{Message: "not able to delete feedback"})
 	}
-	return c.JSON(http.StatusOK, utils.HttpResponse{Message: "ok"})
+	return c.JSON(http.StatusOK, web.HttpResponse{Message: "ok"})
 }
 
 // UpdateFeedback updates feedback based on the id in the url
-func (api RestAPI) UpdateFeedback(w http.ResponseWriter, r *http.Request) {
-	fmt.Println("User Email= ", api.User.Email)
-	feedbackID := mux.Vars(r)["fid"]
-	feedback := api.Feedback
-	err := json.NewDecoder(r.Body).Decode(&feedback)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		api.Logging.Unsuccessful("creatix.feedback.updatefeedback: not able to decode feedback", err)
-		return
+func (api RestAPI) UpdateFeedback(c echo.Context) (err error) {
+	feedback := new(models.Feedback)
+	if err = c.Bind(feedback); err != nil {
+		return err
 	}
-	updatedFeedback, err := feedback.UpdateFeedback(api.DB, api.User, feedbackID)
+	err = feedback.UpdateFeedback(c.Request().Context(), api.DB)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
 		api.Logging.Unsuccessful("creatix.feedback.updatefeedback: not able to update feedback", err)
-		return
+		return c.JSON(http.StatusBadRequest, web.HttpResponse{Message: "not able to update feedback"})
 	}
 
-	err = json.NewEncoder(w).Encode(updatedFeedback)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		api.Logging.Unsuccessful("creatix.feedback.updatefeedback: not able to write out updated feedback", err)
-		return
-	}
-	w.WriteHeader(http.StatusOK)
 	api.Logging.Success("creatix.feedback.updatefeedback: update feedback success")
+	return c.JSON(http.StatusOK, web.HttpResponse{Message: "ok"})
+
 }
 
 // ClapFeedback gives claps to a feedback given id
-func (api RestAPI) ClapFeedback(w http.ResponseWriter, r *http.Request) {
-	feedbackID := mux.Vars(r)["fid"]
-	userEmail := api.User.Email
-	if userEmail == "" {
-		w.WriteHeader(http.StatusUnauthorized)
-		api.Logging.Unsuccessful("creatix.feedback.getUserFeedback: not able to find credentials", errors.New("unauthorized"))
-		return
-	}
-	_, err := api.Feedback.ClapFeedback(api.DB, userEmail, feedbackID)
+func (api RestAPI) ClapFeedback(c echo.Context) error {
+	feedbackID := c.Param("fid")
+	err := api.Feedback.ClapFeedback(c.Request().Context(), api.DB, api.Middleware.Uid, feedbackID)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
 		api.Logging.Unsuccessful("creatix.feedback.clapfeedback: not able to clap feedback", err)
-		return
+		return c.JSON(http.StatusBadRequest, web.HttpResponse{Message: "not able to delete feedback"})
 	}
-	feedbacks, err := api.Feedback.GetUserFeedback(api.DB, userEmail)
+	feedbacks, err := api.Feedback.GetUserFeedback(c.Request().Context(), api.DB, api.UserSession.ID)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
 		api.Logging.Unsuccessful("creatix.feedback.clapFeedback: not able to get feedbacks", err)
-		return
+		return c.JSON(http.StatusBadRequest, web.HttpResponse{Message: "not able to delete feedback"})
 	}
-	w.WriteHeader(http.StatusOK)
 	api.Logging.Success("creatix.feedback.clapfeedback: successfully clapped feedback")
-	err = json.NewEncoder(w).Encode(feedbacks)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		api.Logging.Unsuccessful("creatix.feedback.getUserFeedback: not able to encode feedbacks", err)
-		return
-	}
+
+	return c.JSON(http.StatusOK, feedbacks)
 }
 
 // GetUserFeedback gets all the feedback for the given user
-func (api RestAPI) GetUserFeedback(w http.ResponseWriter, r *http.Request) {
-	userEmail := api.User.Email
-	if userEmail == "" {
-		w.WriteHeader(http.StatusUnauthorized)
-		api.Logging.Unsuccessful("creatix.feedback.getUserFeedback: not able to find credentials", errors.New("unauthorized"))
-		return
-	}
-	feedbacks, err := api.Feedback.GetUserFeedback(api.DB, userEmail)
+func (api RestAPI) GetUserFeedback(c echo.Context) error {
+	feedbacks, err := api.Feedback.GetUserFeedback(c.Request().Context(), api.DB, api.Middleware.Uid)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
 		api.Logging.Unsuccessful("creatix.feedback.getUserFeedback: not able to get feedbacks", err)
-		return
+		return err
 	}
-	w.WriteHeader(http.StatusOK)
-	err = json.NewEncoder(w).Encode(feedbacks)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		api.Logging.Unsuccessful("creatix.feedback.getUserFeedback: not able to encode feedbacks", err)
-		return
-	}
+	return c.JSON(http.StatusOK, feedbacks)
 }
 
 // Comment feedback
-func (api RestAPI) CommentFeedback(w http.ResponseWriter, r *http.Request) {
+func (api RestAPI) CommentFeedback(c echo.Context) (err error) {
 	var comment models.Comment
-	err := json.NewDecoder(r.Body).Decode(&comment)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		api.Logging.Unsuccessful("creatix.feedback.commentfeedback: not able to decode comment", err)
-		return
+	if err = c.Bind(comment); err != nil {
+		return err
 	}
-	feedbackID := mux.Vars(r)["fid"]
-	userEmail := api.User.Email
-	if userEmail == "" {
-		w.WriteHeader(http.StatusUnauthorized)
-		api.Logging.Unsuccessful("creatix.feedback.commentfeedback: not able to find credentials", errors.New("unauthorized"))
-		return
-	}
-
-	err = api.Feedback.CommentFeedback(api.DB, userEmail, feedbackID, comment)
+	err = comment.CommentFeedback(c.Request().Context(), api.DB, api.Middleware.Uid)
 	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
 		api.Logging.Unsuccessful("creatix.feedback.commentfeedback: not able to write comment", err)
-		return
+		return c.JSON(http.StatusBadRequest, web.HttpResponse{Message: "not able to delete feedback"})
 	}
-	w.WriteHeader(http.StatusOK)
-
+	return c.JSON(http.StatusOK, nil)
 }

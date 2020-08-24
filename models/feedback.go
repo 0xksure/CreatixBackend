@@ -3,32 +3,34 @@ package models
 import (
 	"context"
 	"database/sql"
+	"strconv"
+	"time"
 
-	"github.com/jinzhu/gorm"
 	"github.com/pkg/errors"
 )
 
 type Feedback struct {
-	UserID      uint
-	Title       string `gorm:"type:varchar(264)"`
-	Description string
+	ID          string `json:"id"`
+	UserID      string `json:"userId"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
 }
 
 type Clap struct {
 	UserID     uint
 	FeedbackID uint
-	User       User `gorm:"foreignkey:ID;association_foreignkey:UserID"`
+	User       User
 }
 
 type Comment struct {
-	UserID     uint
-	FeedbackID uint
-	Comment    string
-	User       User `gorm:"foreignkey:ID;association_foreignkey:UserID"`
+	ID         string `json:"id"`
+	UserID     string `json:"userId"`
+	FeedbackID string `json:"feedbackId"`
+	Comment    string `json:"comment"`
 }
 
 var createFeedback = `
-	INSERT INTO FEEDBACK 
+	INSERT INTO FEEDBACK(UserID,Title,Description)
 	VALUES ( $1, $2, $3 );
 `
 
@@ -38,22 +40,23 @@ func (f Feedback) CreateFeedback(ctx context.Context, db *sql.DB) (err error) {
 	if err != nil {
 		return err
 	}
-
-	res, err := tx.Exec(createFeedback, f.UserID, f.Title, f.Description)
-	if err != nil {
-		err = tx.Rollback()
+	defer func() {
 		if err != nil {
-			return err
+			tx.Rollback()
+			return
 		}
+	}()
+	uid, err := strconv.Atoi(f.UserID)
+	if err != nil {
+		return
+	}
+	res, err := tx.Exec(createFeedback, uid, f.Title, f.Description)
+	if err != nil {
 		return err
 	}
 
 	err = tx.Commit()
 	if err != nil {
-		err = tx.Rollback()
-		if err != nil {
-			return err
-		}
 		return err
 	}
 
@@ -70,7 +73,7 @@ func (f Feedback) CreateFeedback(ctx context.Context, db *sql.DB) (err error) {
 }
 
 var deleteFeedback = `
-	DELETE FROM FEEDBACK WHERE ID=$1;
+	UPDATE FEEDBACK SET DeletedAt=$1 WHERE ID=$2
 `
 
 // DeleteFeedback deletes feedback written by user
@@ -79,22 +82,21 @@ func (f Feedback) DeleteFeedback(ctx context.Context, db *sql.DB, id string) err
 	if err != nil {
 		return err
 	}
-
-	res, err := tx.Exec(deleteFeedback, id)
-	if err != nil {
-		err = tx.Rollback()
+	defer func() {
 		if err != nil {
-			return err
+			tx.Rollback()
+			return
 		}
+	}()
+
+	currentTime := time.Now()
+	res, err := tx.Exec(deleteFeedback, currentTime.Format(time.RFC3339), id)
+	if err != nil {
 		return err
 	}
 
 	err = tx.Commit()
 	if err != nil {
-		err = tx.Rollback()
-		if err != nil {
-			return err
-		}
 		return err
 	}
 
@@ -112,32 +114,31 @@ func (f Feedback) DeleteFeedback(ctx context.Context, db *sql.DB, id string) err
 
 var updateFeedback = `
 	UPDATE FEEDBACK
-	SET Title=$2,Description=$3
+	SET Title=$2,Description=$3,UpdatedAt=$4
 	WHERE ID=$1
 `
 
 // UpdateFeedback updates the database
-func (f Feedback) UpdateFeedback(ctx context.Context, db *sql.DB, id string, feedback Feedback) error {
+func (f Feedback) UpdateFeedback(ctx context.Context, db *sql.DB) error {
 	tx, err := db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return err
 	}
-
-	res, err := tx.Exec(updateFeedback, id, feedback.Title, feedback.Description)
-	if err != nil {
-		err = tx.Rollback()
+	defer func() {
 		if err != nil {
-			return err
+			tx.Rollback()
+			return
 		}
+	}()
+
+	currentTime := time.Now()
+	res, err := tx.Exec(updateFeedback, f.ID, f.Title, f.Description, currentTime.Format(time.RFC3339))
+	if err != nil {
 		return err
 	}
 
 	err = tx.Commit()
 	if err != nil {
-		err = tx.Rollback()
-		if err != nil {
-			return err
-		}
 		return err
 	}
 
@@ -153,122 +154,197 @@ func (f Feedback) UpdateFeedback(ctx context.Context, db *sql.DB, id string, fee
 	return nil
 }
 
+var clapFeedback = `
+	INSERT INTO CLAPS(UserID,FeedbackID)
+	SELECT $1,$2
+	WHERE NOT EXISTS (
+		SELECT ID FROM CLAPS WHERE DeletedAt IS NOT NULL OR (userid=$1 AND feedbackid=$2)
+	)
+`
+
 // ClapFeedback gives claps to feedback based on id, whomever can clap a feedback
-func (f Feedback) ClapFeedback(db *gorm.DB, userEmail string, feedbackID string) (Feedback, error) {
-	tx := db.Begin()
-	db.Preload("Feedbacks")
-	var clap Clap
-	var clappingUser User
-	var feedbackToBeClapped Feedback
-	// Find user that wants to clap
-	res := tx.Where("email = ?", userEmail).First(&clappingUser)
-	if err := res.Error; err != nil {
-		tx.Rollback()
-		return feedbackToBeClapped, errors.Wrap(err, "not able to find user")
+func (f Feedback) ClapFeedback(ctx context.Context, db *sql.DB, userID string, feedbackID string) error {
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return err
 	}
-	clap.User = clappingUser
-	clap.UserID = clappingUser.ID
-
-	// Find feedback to be clapped
-	res = tx.Where("id = ?", feedbackID).First(&feedbackToBeClapped)
-	if err := res.Error; err != nil {
-		tx.Rollback()
-		return feedbackToBeClapped, errors.Wrap(err, "not able to find feedback to clap")
-	}
-	clap.FeedbackID = feedbackToBeClapped.ID
-
-	// Check if clap allready exists
-	var clapped Clap
-	var count int
-	res = tx.Unscoped().Where("user_id = ? AND feedback_id = ?", clap.UserID, feedbackID).Find(&clapped).Count(&count)
-	if count > 0 {
-		// A clap already exists
-		if clapped.DeletedAt == nil {
-			// delete clap
-			res = db.Delete(&clapped)
-			if err := res.Error; err != nil {
-				tx.Rollback()
-				return feedbackToBeClapped, errors.Wrap(err, "not able to delete clap")
-			}
-			return feedbackToBeClapped, nil
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+			return
 		}
+	}()
+
+	uid, err := strconv.Atoi(userID)
+	if err != nil {
+		return err
 	}
 
-	// create clap
-	res = tx.Create(&clap)
-	if err := res.Error; err != nil {
-		tx.Rollback()
-		return feedbackToBeClapped, errors.Wrap(err, "not able to create clap")
+	fid, err := strconv.Atoi(feedbackID)
+	if err != nil {
+		return err
 	}
 
-	resAssociation := tx.Model(&feedbackToBeClapped).Association("Claps").Append(&clap)
-	if err := resAssociation.Error; err != nil {
-		tx.Rollback()
-		return feedbackToBeClapped, errors.Wrap(err, "not able to append clap")
+	res, err := tx.ExecContext(ctx, clapFeedback, uid, fid)
+	if err != nil {
+		return err
 	}
 
-	return feedbackToBeClapped, tx.Commit().Error
+	err = tx.Commit()
+	if err != nil {
+		return err
+	}
+
+	rowsAffected, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return errors.New("0 rows affected")
+	}
+
+	return nil
 }
 
-// GetUserFeedback returns the feedback created by the given user
-func (f Feedback) GetUserFeedback(db *gorm.DB, userEmail string) ([]Feedback, error) {
-	var feedbacks []Feedback
-	var user User
-	if err := db.Where("email = ?", userEmail).First(&user).Error; err != nil {
-		return feedbacks, errors.Wrap(err, "cannot find user")
-	}
-	db.Where("user_id = ?", user.ID).Preload("Claps").Preload("Claps.User").
-		Preload("Comments").Preload("Comments.User").
-		Preload("User").Find(&feedbacks)
+const getUserFeedback = `
+	SELECT
+	ID
+	,UserID
+	,Title
+	,Description
+	FROM FEEDBACK
+	WHERE UserID=$1 AND DeletedAt IS NULL
+`
 
+// GetUserFeedback returns the feedback created by the given user
+func (f Feedback) GetUserFeedback(ctx context.Context, db *sql.DB, userID string) ([]Feedback, error) {
+	var feedbacks []Feedback
+	uid, err := strconv.Atoi(userID)
+	if err != nil {
+		return feedbacks, err
+	}
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return feedbacks, err
+	}
+	rows, err := tx.QueryContext(ctx, getUserFeedback, uid)
+	if err != nil {
+		return feedbacks, err
+	}
+
+	defer rows.Close()
+	for rows.Next() {
+		var feedback Feedback
+		err = rows.Scan(&feedback.ID, &feedback.UserID, &feedback.Title, &feedback.Description)
+		if err != nil {
+			return feedbacks, err
+		}
+		feedbacks = append(feedbacks, feedback)
+	}
+
+	err = rows.Close()
+	if err != nil {
+		return feedbacks, err
+	}
+
+	if err := rows.Err(); err != nil {
+		return feedbacks, err
+	}
 	return feedbacks, nil
 }
 
+const commentFeedback = `
+	INSERT INTO COMMENTS(UserID,FeedbackID,Comment)
+	VALUES ($1,$2,$3)
+	WHERE NOT EXIST (
+		SELECT UserID from COMMENTS WHERE UserID=$1
+	)
+`
+
 // CommentFeedback writes a comment on the feedback
-func (f Feedback) CommentFeedback(db *gorm.DB, userEmail string, feedbackID string, comment Comment) error {
-	// Find user that wants to comment
-	tx := db.Begin()
-	var user User
-	res := tx.Where("email = ?", userEmail).First(&user)
-	if err := res.Error; err != nil {
-		tx.Rollback()
-		return errors.Wrap(err, "not able to find user")
+func (c Comment) CommentFeedback(ctx context.Context, db *sql.DB, UserID string) (err error) {
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return
 	}
 
-	// FInd feedback to be
-	var feedback Feedback
-	res = tx.Where("id = ?", feedbackID).First(&feedback)
-	if err := res.Error; err != nil {
-		tx.Rollback()
-		return errors.Wrap(err, "not able to find feedback")
+	uid, err := strconv.Atoi(UserID)
+	if err != nil {
+		return err
 	}
 
-	// Create comment
-	comment.UserID = user.ID
-	comment.FeedbackID = feedback.ID
-	res = tx.Create(&comment)
-	if err := res.Error; err != nil {
-		tx.Rollback()
-		return errors.Wrap(err, "not able to create comment ")
+	fid, err := strconv.Atoi(c.FeedbackID)
+	if err != nil {
+		return err
 	}
 
-	// append to feedback
-	resAssociation := tx.Model(&feedback).Association("Comments").Append(&comment)
-	if err := resAssociation.Error; err != nil {
-		tx.Rollback()
-		return errors.Wrap(err, "not able to append comment")
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+			return
+		}
+	}()
+
+	res, err := tx.ExecContext(ctx, commentFeedback, uid, fid, c.Comment)
+	if err != nil {
+		return
 	}
 
-	return tx.Commit().Error
+	err = tx.Commit()
+	if err != nil {
+		return err
+	}
+
+	nrows, err := res.RowsAffected()
+	if err != nil {
+		return
+	}
+	if nrows == 0 {
+		return errors.New("0 rows affected")
+	}
+
+	return
 }
 
-func (f Feedback) UpdateComment(db *gorm.DB, commentID string, comment Comment) error {
-	tx := db.Begin()
-	res := tx.Model(&comment).Where("id = ?", commentID).Update("comment", comment.Comment)
-	if err := res.Error; err != nil {
-		tx.Rollback()
-		return errors.Wrap(err, "not able to updat comment ")
+const updateComment = `
+UPDATE COMMENTS SET Comment=$2,UpdatedAt=$3 WHERE ID=$1
+`
+
+func (c Comment) UpdateComment(ctx context.Context, db *sql.DB, commentID string, comment string) error {
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return err
 	}
 
-	return tx.Commit().Error
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+			return
+		}
+	}()
+	currentTime := time.Now()
+	res, err := tx.ExecContext(ctx, commentID, comment, currentTime.Format(time.RFC3339))
+	if err != nil {
+		return err
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		err = tx.Rollback()
+		if err != nil {
+			return err
+		}
+		return err
+	}
+
+	nrows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if nrows == 0 {
+		return errors.New("0 rows affected")
+	}
+
+	return nil
 }

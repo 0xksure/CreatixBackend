@@ -1,11 +1,11 @@
-package utils
+package web
 
 import (
 	"encoding/json"
 	"log"
 	"net/http"
 
-	"github.com/kristofhb/CreatixBackend/models"
+	"github.com/kristohberg/CreatixBackend/models"
 )
 
 type HttpResponse struct {

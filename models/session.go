@@ -4,11 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"time"
 
-	"github.com/google/uuid"
-	"github.com/jinzhu/gorm"
-	"github.com/kristofhb/CreatixBackend/utils"
+	"github.com/kristohberg/CreatixBackend/utils"
+	_ "github.com/lib/pq"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -16,7 +16,7 @@ import (
 var SigningKey = []byte("secret")
 
 type User struct {
-	ID        uint      `json:"id"`
+	ID        string    `json:"id"`
 	Firstname string    `json:"firstname"`
 	Lastname  string    `json:"lastname"`
 	Birthday  time.Time `json:"birthday"`
@@ -26,6 +26,11 @@ type User struct {
 
 type UserSession struct {
 	JwtSecret string
+	ID        string
+}
+
+func (u UserSession) Valid() error {
+	return nil
 }
 
 type PasswordRequest struct {
@@ -33,15 +38,13 @@ type PasswordRequest struct {
 }
 
 type PasswordChangeRequest struct {
-	gorm.Model
 	ReqID  string
-	UserID uint
+	UserID string
 }
 
 type UserInformation struct {
-	gorm.Model
 	UserID      uint
-	User        User `gorm:"foreignkey:UserID"`
+	User        User
 	PhoneNumber string
 	BirthDate   string
 	Gender      string
@@ -57,8 +60,8 @@ type Response struct {
 
 var cookieExpireTime = 30 * time.Minute
 
-var createUseQuery = `
-	INSERT INTO user
+var createUserQuery = `
+	INSERT INTO users(firstname,lastname,birthday,email,password)
 	VALUES ($1,$2,$3,$4,$5)
 `
 
@@ -68,20 +71,28 @@ func (u UserSession) CreateUser(ctx context.Context, db *sql.DB, user User) erro
 	if err != nil {
 		return err
 	}
-
-	_, err = tx.Exec(createUseQuery, user.Firstname, user.Lastname, user.Birthday, user.Email, user.Password)
+	res, err := tx.Exec(createUserQuery, user.Firstname, user.Lastname, user.Birthday, user.Email, user.Password)
 	if err != nil {
+		fmt.Println("err: ", err)
 		err = tx.Rollback()
 		if err != nil {
 			return err
 		}
 		return err
 	}
-
 	err = tx.Commit()
 	if err != nil {
 		return err
 	}
+
+	nrows, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if nrows == 0 {
+		return errors.New("0 rows affected")
+	}
+	fmt.Println("err: ", err)
 
 	return nil
 }
@@ -94,7 +105,7 @@ var findUserByEmailQuery = `
 	,Birthday
 	,Email
 	,Password
-	FROM user
+	FROM users
 	WHERE Email = $1
 `
 
@@ -106,7 +117,7 @@ func findUserByEmail(ctx context.Context, db *sql.DB, email string) (User, error
 		return user, err
 	}
 
-	err = tx.QueryRow(findUserByEmailQuery, email).Scan(&user)
+	err = tx.QueryRow(findUserByEmailQuery, email).Scan(&user.ID, &user.Firstname, &user.Lastname, &user.Birthday, &user.Email, &user.Password)
 	if err != nil {
 		return user, err
 	}
@@ -116,7 +127,7 @@ func findUserByEmail(ctx context.Context, db *sql.DB, email string) (User, error
 
 // LoginUser checks if the user given password and username exists
 // if it does
-func (u UserSession) LoginUser(ctx context.Context, db *sql.DB, userEmail string, password string) (Response, error) {
+func (u *UserSession) LoginUser(ctx context.Context, db *sql.DB, userEmail string, password string) (Response, error) {
 	var resp Response
 	existingUser, err := findUserByEmail(ctx, db, userEmail)
 	if err != nil {
@@ -130,10 +141,10 @@ func (u UserSession) LoginUser(ctx context.Context, db *sql.DB, userEmail string
 	}
 
 	expiresAt := time.Now().Add(time.Minute * 30)
-	tokenString, err := utils.NewToken(expiresAt, existingUser.ID, []byte(u.JwtSecret))
+	tokenString, err := utils.NewToken(expiresAt, existingUser.ID, []byte("secret"))
 	if err != nil {
 		resp.Message = "Either the user does not exists or the password is incorrect"
-		return resp, errors.New("not able to sign string")
+		return resp, err
 	}
 
 	resp.Status = false
@@ -141,14 +152,16 @@ func (u UserSession) LoginUser(ctx context.Context, db *sql.DB, userEmail string
 	resp.Token = tokenString
 	resp.ExpiresAt = expiresAt
 
+	u.ID = existingUser.ID
+
 	return resp, nil
 }
 
 // ForgotPassword send a new password link
+/*
 func (u UserSession) ForgotPassword(ctx context.Context, db *sql.DB, email string) (resp Response, err error) {
 	// Create New password request
-	var user User
-	user, err = findUserByEmail(ctx, db, email)
+	user, err := findUserByEmail(ctx, db, email)
 	if err != nil {
 		resp.Message = "Either the user does not exists or the password is incorrect"
 		return resp, err
@@ -176,3 +189,4 @@ func (u UserSession) ForgotPassword(ctx context.Context, db *sql.DB, email strin
 	// send mail to user
 	return resp, nil
 }
+*/

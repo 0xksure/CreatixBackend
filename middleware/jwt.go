@@ -1,12 +1,11 @@
-package middleware
+package jwtmiddleware
 
 import (
-	"context"
-	"encoding/json"
+	"fmt"
 	"net/http"
+	"sync"
 
 	jwt "github.com/dgrijalva/jwt-go"
-	"github.com/kristofhb/CreatixBackend/utils"
 	"github.com/labstack/echo"
 )
 
@@ -14,43 +13,48 @@ type Exception struct {
 	Message string `json:"Message"`
 }
 
-func JwtVerify(next echo.HandlerFunc) echo.HandlerFunc {
+type Middleware struct {
+	Claim *MiddlewareClaim
+	Uid   string
+	mutex sync.RWMutex
+}
+
+type MiddlewareClaim struct {
+	jwt.StandardClaims
+}
+
+func (m *Middleware) JwtVerify(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		err := next(c)
-		if err != nil{
-			return c.JSON(http.StatusInternalServerError,utils.HttpResponse{Message:"could not serve http requests"})
-		}
+		m.mutex.Lock()
+		defer m.mutex.Unlock()
 		cookie, err := c.Cookie("token")
 		if err != nil {
 			if err == http.ErrNoCookie {
-				return c.JSON(http.StatusUnauthorized,"unauthorized: missing token")
+				return c.JSON(http.StatusUnauthorized, "unauthorized: missing token")
 			}
-			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(Exception{Message: "bad request"})
-			return c.JSON(http.StatusBadRequest,"bad request")
+			return c.JSON(http.StatusBadRequest, Exception{Message: "bad request"})
 		}
 
-		tk := &utils.UserSession{}
-		tknStr := c.Value
-		tkn, err := jwt.ParseWithClaims(tknStr, tk, func(token *jwt.Token) (interface{}, error) {
+		tknStr := cookie.Value
+		token, err := jwt.ParseWithClaims(tknStr, &MiddlewareClaim{}, func(token *jwt.Token) (interface{}, error) {
 			return []byte("secret"), nil
 		})
 
 		if err != nil {
 			if err == jwt.ErrSignatureInvalid {
-				w.WriteHeader(http.StatusUnauthorized)
-				return
+				return c.JSON(http.StatusUnauthorized, Exception{Message: "bad request"})
 			}
-			w.WriteHeader(http.StatusForbidden)
-			json.NewEncoder(w).Encode(Exception{Message: err.Error()})
-			return
+			return c.JSON(http.StatusUnauthorized, Exception{Message: fmt.Sprintf("err1: %s", err.Error())})
 		}
 
-		if !tkn.Valid {
-			w.WriteHeader(http.StatusUnauthorized)
+		claims, ok := token.Claims.(*MiddlewareClaim)
+		if !ok || !token.Valid {
+			return c.JSON(http.StatusUnauthorized, Exception{Message: fmt.Sprintf("err2: %s", err.Error())})
 		}
-
-		ctx := context.WithValue(r.Context(), "user", tk)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
+		m.Uid = claims.Id
+		fmt.Println("claims: ", claims)
+		fmt.Println("middleware: ", m)
+		fmt.Println("uid: ", claims.Id)
+		return next(c)
+	}
 }

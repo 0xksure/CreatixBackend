@@ -32,6 +32,7 @@ func NewToken(expiresAt time.Time, userID string, secret []byte) (string, error)
 		StandardClaims: jwt.StandardClaims{
 			ExpiresAt: expiresAt.Unix(),
 			Issuer:    "creatix",
+			Id:        userID,
 		},
 	}
 
@@ -73,7 +74,7 @@ func IsTokenValid(tokenString string, secret []byte) (bool, error) {
 	return true, nil
 }
 
-func RefreshToken(tokenString string, secret []byte) error {
+/*func RefreshToken(tokenString string, secret []byte) error {
 
 	err := c.VerifyToken(tokenString, secret)
 	if err != nil {
@@ -82,3 +83,4 @@ func RefreshToken(tokenString string, secret []byte) error {
 
 	expiresAt := time.Now().Add(time.Minute * 3)
 }
+*/
