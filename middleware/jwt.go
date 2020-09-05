@@ -52,9 +52,6 @@ func (m *Middleware) JwtVerify(next echo.HandlerFunc) echo.HandlerFunc {
 			return c.JSON(http.StatusUnauthorized, Exception{Message: fmt.Sprintf("err2: %s", err.Error())})
 		}
 		m.Uid = claims.Id
-		fmt.Println("claims: ", claims)
-		fmt.Println("middleware: ", m)
-		fmt.Println("uid: ", claims.Id)
 		return next(c)
 	}
 }

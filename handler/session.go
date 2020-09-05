@@ -2,6 +2,7 @@ package handler
 
 import (
 	"database/sql"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -38,15 +39,15 @@ func (s Session) Handler(e *echo.Group) {
 }
 
 // Signup signups the new user
-func (s Session) Signup(c echo.Context) error {
-	var user models.User
-
-	err := c.Bind(&user)
+func (s Session) Signup(c echo.Context) (err error) {
+	user := new(models.User)
+	err = c.Bind(user)
+	fmt.Println("hello")
 	if err != nil {
 		s.Logging.Unsuccessful("could not parse user data", err)
 		return c.String(http.StatusBadRequest, "could not bind data")
 	}
-
+	fmt.Println("user: ", user)
 	pass, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
 	if err != nil {
 		s.Logging.Unsuccessful("not able to encrypt password", err)
@@ -54,7 +55,7 @@ func (s Session) Signup(c echo.Context) error {
 	}
 
 	user.Password = string(pass)
-	err = s.UserSession.CreateUser(c.Request().Context(), s.DB, user)
+	err = s.UserSession.CreateUser(c.Request().Context(), s.DB, *user)
 	if err != nil {
 		s.Logging.Unsuccessful("not able to create user ", err)
 		return c.String(http.StatusBadRequest, "could not create user")
@@ -65,12 +66,15 @@ func (s Session) Signup(c echo.Context) error {
 
 // Login checks whether the user exists and creates a cookie
 func (s Session) Login(c echo.Context) error {
-	var loginRequest LoginRequest
-	err := c.Bind(&loginRequest)
+	fmt.Println("Login")
+	loginRequest := new(LoginRequest)
+	err := c.Bind(loginRequest)
 	if err != nil {
 		s.Logging.Unsuccessful("not able to parse user", err)
 		return c.String(http.StatusBadRequest, "not able to parse user")
 	}
+
+	fmt.Println("Login request: ", loginRequest)
 	resp, err := s.UserSession.LoginUser(c.Request().Context(), s.DB, loginRequest.Email, loginRequest.Password)
 	if err != nil {
 		s.Logging.Unsuccessful("not able to log in user", err)
@@ -122,17 +126,17 @@ func (s Session) Logout(c echo.Context) error {
 func (s Session) Refresh(c echo.Context) error {
 	cookie, err := c.Cookie("token")
 	if err != nil {
-		return c.JSON(http.StatusBadRequest, web.HttpResponse{Message: "invalid cookie"})
+		return c.JSON(http.StatusBadRequest, web.HttpResponse{Message: "cookie not found"})
 	}
 
 	tokenValue := cookie.Value
-	ok, err := utils.IsTokenValid(tokenValue, []byte(s.Cfg.JwtSecret))
+	ok, err := utils.IsTokenValid(tokenValue, []byte("secret"))
 	if err != nil || !ok {
-		return c.JSON(http.StatusBadRequest, web.HttpResponse{Message: "invalid cookie"})
+		return c.JSON(http.StatusBadRequest, web.HttpResponse{Message: fmt.Sprintf("invalid cookie: %s", err.Error())})
 	}
 
 	expiresAt := time.Now().Add(time.Minute * 5)
-	newToken, err := utils.NewToken(expiresAt, "1", []byte(s.Cfg.JwtSecret))
+	newToken, err := utils.NewToken(expiresAt, "1", []byte("secret"))
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, web.HttpResponse{Message: "could not generate new token"})
 	}

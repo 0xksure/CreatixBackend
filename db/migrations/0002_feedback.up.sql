@@ -50,3 +50,31 @@ CREATE TABLE FEEDBACK
             (UserID) REFERENCES USERS
             (ID)
 );
+
+            CREATE TABLE COMPANY
+            (
+                ID SERIAL PRIMARY KEY,
+                Name VARCHAR(100)
+            );
+
+            CREATE TABLE TEAM
+            (
+                ID SERIAL PRIMARY KEY,
+                CompanyID INT NOT NULL,
+                Name VARCHAR
+                (100),
+
+                CONSTRAINT fk_team_company FOREIGN KEY (CompanyID) REFERENCES COMPANY(ID)
+            );
+
+            CREATE TABLE USER_COMPANY
+            (
+                CompanyID INT NOT NULL,
+                UserID INT NOT NULL
+            );
+
+            CREATE TABLE USER_TEAM
+            (
+                TeamID INT NOT NULL,
+                UserID INT NOT NULL
+            );

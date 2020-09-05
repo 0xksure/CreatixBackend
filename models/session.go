@@ -15,18 +15,27 @@ import (
 //
 var SigningKey = []byte("secret")
 
+type Timestamp time.Time
+
+func (t *Timestamp) UnmarshalParam(src string) error {
+	fmt.Println("Unmarshal")
+	ts, err := time.Parse(time.RFC3339, src)
+	*t = Timestamp(ts)
+	return err
+}
+
 type User struct {
-	ID        string    `json:"id"`
-	Firstname string    `json:"firstname"`
-	Lastname  string    `json:"lastname"`
-	Birthday  time.Time `json:"birthday"`
-	Email     string    `json:"email"`
-	Password  string    `json:"password"`
+	ID        string `json:"id"`
+	Firstname string `json:"firstname"`
+	Lastname  string `json:"lastname"`
+	Birthday  string `json:"birthday"`
+	Email     string `json:"email"`
+	Password  string `json:"password"`
 }
 
 type UserSession struct {
-	JwtSecret string
 	ID        string
+	JwtSecret string
 }
 
 func (u UserSession) Valid() error {
@@ -40,14 +49,6 @@ type PasswordRequest struct {
 type PasswordChangeRequest struct {
 	ReqID  string
 	UserID string
-}
-
-type UserInformation struct {
-	UserID      uint
-	User        User
-	PhoneNumber string
-	BirthDate   string
-	Gender      string
 }
 
 type Response struct {
@@ -73,7 +74,6 @@ func (u UserSession) CreateUser(ctx context.Context, db *sql.DB, user User) erro
 	}
 	res, err := tx.Exec(createUserQuery, user.Firstname, user.Lastname, user.Birthday, user.Email, user.Password)
 	if err != nil {
-		fmt.Println("err: ", err)
 		err = tx.Rollback()
 		if err != nil {
 			return err
@@ -92,7 +92,6 @@ func (u UserSession) CreateUser(ctx context.Context, db *sql.DB, user User) erro
 	if nrows == 0 {
 		return errors.New("0 rows affected")
 	}
-	fmt.Println("err: ", err)
 
 	return nil
 }

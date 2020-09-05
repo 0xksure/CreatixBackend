@@ -10,16 +10,20 @@ import (
 )
 
 type Feedback struct {
-	ID          string `json:"id"`
-	UserID      string `json:"userId"`
-	Title       string `json:"title"`
-	Description string `json:"description"`
+	ID          string    `json:"id"`
+	UserID      string    `json:"userId"`
+	Person      Person    `json:"person"`
+	Title       string    `json:"title"`
+	Description string    `json:"description"`
+	Comments    []Comment `json:"comments"`
+	Claps       []Clap    `json:"claps"`
+	UpdatedAt   string    `json:"updatedAt`
 }
 
 type Clap struct {
-	UserID     uint
-	FeedbackID uint
-	User       User
+	ID         string `json:"id"`
+	UserID     string `json:"userId"`
+	FeedbackID string `json:"feedbackId`
 }
 
 type Comment struct {
@@ -27,6 +31,12 @@ type Comment struct {
 	UserID     string `json:"userId"`
 	FeedbackID string `json:"feedbackId"`
 	Comment    string `json:"comment"`
+}
+
+type Person struct {
+	ID        string `json:"id"`
+	Firstname string `json:"firstname"`
+	Lastname  string `json:"lastname"`
 }
 
 var createFeedback = `
@@ -154,12 +164,16 @@ func (f Feedback) UpdateFeedback(ctx context.Context, db *sql.DB) error {
 	return nil
 }
 
-var clapFeedback = `
-	INSERT INTO CLAPS(UserID,FeedbackID)
-	SELECT $1,$2
-	WHERE NOT EXISTS (
-		SELECT ID FROM CLAPS WHERE DeletedAt IS NOT NULL OR (userid=$1 AND feedbackid=$2)
-	)
+var clapFeedback = ` 
+	WITH upsert AS (
+		UPDATE CLAPS SET deletedat=NOW()
+		WHERE DeletedAt IS NULL AND (userid=$1 AND feedbackid=$2)
+		RETURNING *
+   )
+   INSERT INTO CLAPS (UserID,FeedbackID)
+   SELECT $1, $2 
+   WHERE NOT EXISTS (SELECT * FROM upsert);
+   
 `
 
 // ClapFeedback gives claps to feedback based on id, whomever can clap a feedback
@@ -185,7 +199,7 @@ func (f Feedback) ClapFeedback(ctx context.Context, db *sql.DB, userID string, f
 		return err
 	}
 
-	res, err := tx.ExecContext(ctx, clapFeedback, uid, fid)
+	_, err = tx.ExecContext(ctx, clapFeedback, uid, fid)
 	if err != nil {
 		return err
 	}
@@ -195,31 +209,97 @@ func (f Feedback) ClapFeedback(ctx context.Context, db *sql.DB, userID string, f
 		return err
 	}
 
-	rowsAffected, err := res.RowsAffected()
+	return nil
+}
+
+type Feedbacks []Feedback
+
+func (fs *Feedbacks) GetUserClaps(ctx context.Context, db *sql.DB) error {
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return err
 	}
 
-	if rowsAffected == 0 {
-		return errors.New("0 rows affected")
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+			return
+		}
+	}()
+
+	for idx, f := range *fs {
+		c, err := getClaps(ctx, tx, f.ID)
+		if err != nil {
+			return err
+		}
+		(*fs)[idx].Claps = c
 	}
 
+	err = tx.Commit()
+	if err != nil {
+		return err
+	}
 	return nil
+}
+
+const getClapsQuery = `
+	SELECT 
+	ID
+	,UserID
+	,FeedbackId
+	FROM CLAPS
+	WHERE FeedbackID=$1 AND DeletedAt IS NULL
+`
+
+func getClaps(ctx context.Context, tx *sql.Tx, feedbackID string) ([]Clap, error) {
+	claps := make([]Clap, 0)
+	fid, err := strconv.Atoi(feedbackID)
+	if err != nil {
+		return claps, err
+	}
+
+	rows, err := tx.QueryContext(ctx, getClapsQuery, fid)
+	if err != nil {
+		return claps, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var clap Clap
+		if err := rows.Scan(&clap.ID, &clap.UserID, &clap.FeedbackID); err != nil {
+			return claps, err
+		}
+
+		claps = append(claps, clap)
+	}
+
+	return claps, nil
 }
 
 const getUserFeedback = `
 	SELECT
-	ID
-	,UserID
-	,Title
-	,Description
-	FROM FEEDBACK
+	f.ID
+	,f.UserID
+	,u.Firstname
+	,u.Lastname
+	,f.Title
+	,f.Description
+	,f.UpdatedAt
+	FROM FEEDBACK as f
+	LEFT JOIN (
+		SELECT
+		ID 
+		,Firstname
+		,Lastname
+		FROM USERS
+		WHERE ID=$1
+	) as u 
+	ON u.ID=f.UserID
 	WHERE UserID=$1 AND DeletedAt IS NULL
 `
 
 // GetUserFeedback returns the feedback created by the given user
-func (f Feedback) GetUserFeedback(ctx context.Context, db *sql.DB, userID string) ([]Feedback, error) {
-	var feedbacks []Feedback
+func (f Feedback) GetUserFeedback(ctx context.Context, db *sql.DB, userID string) (Feedbacks, error) {
+	var feedbacks Feedbacks
 	uid, err := strconv.Atoi(userID)
 	if err != nil {
 		return feedbacks, err
@@ -228,6 +308,13 @@ func (f Feedback) GetUserFeedback(ctx context.Context, db *sql.DB, userID string
 	if err != nil {
 		return feedbacks, err
 	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+			return
+		}
+	}()
+
 	rows, err := tx.QueryContext(ctx, getUserFeedback, uid)
 	if err != nil {
 		return feedbacks, err
@@ -236,7 +323,14 @@ func (f Feedback) GetUserFeedback(ctx context.Context, db *sql.DB, userID string
 	defer rows.Close()
 	for rows.Next() {
 		var feedback Feedback
-		err = rows.Scan(&feedback.ID, &feedback.UserID, &feedback.Title, &feedback.Description)
+		err = rows.Scan(&feedback.ID,
+			&feedback.UserID,
+			&feedback.Person.Firstname,
+			&feedback.Person.Lastname,
+			&feedback.Title,
+			&feedback.Description,
+			&feedback.UpdatedAt,
+		)
 		if err != nil {
 			return feedbacks, err
 		}
@@ -251,15 +345,17 @@ func (f Feedback) GetUserFeedback(ctx context.Context, db *sql.DB, userID string
 	if err := rows.Err(); err != nil {
 		return feedbacks, err
 	}
+	err = tx.Commit()
+	if err != nil {
+		return feedbacks, err
+	}
+
 	return feedbacks, nil
 }
 
 const commentFeedback = `
 	INSERT INTO COMMENTS(UserID,FeedbackID,Comment)
-	VALUES ($1,$2,$3)
-	WHERE NOT EXIST (
-		SELECT UserID from COMMENTS WHERE UserID=$1
-	)
+	SELECT $1,$2,$3
 `
 
 // CommentFeedback writes a comment on the feedback
@@ -311,7 +407,8 @@ const updateComment = `
 UPDATE COMMENTS SET Comment=$2,UpdatedAt=$3 WHERE ID=$1
 `
 
-func (c Comment) UpdateComment(ctx context.Context, db *sql.DB, commentID string, comment string) error {
+// UpdateComment updates a comment based on the comment ID
+func (c Comment) UpdateComment(ctx context.Context, db *sql.DB) error {
 	tx, err := db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return err
@@ -323,18 +420,19 @@ func (c Comment) UpdateComment(ctx context.Context, db *sql.DB, commentID string
 			return
 		}
 	}()
+
+	cid, err := strconv.Atoi(c.ID)
+	if err != nil {
+		return err
+	}
 	currentTime := time.Now()
-	res, err := tx.ExecContext(ctx, commentID, comment, currentTime.Format(time.RFC3339))
+	res, err := tx.ExecContext(ctx, updateComment, cid, c.Comment, currentTime.Format(time.RFC3339))
 	if err != nil {
 		return err
 	}
 
 	err = tx.Commit()
 	if err != nil {
-		err = tx.Rollback()
-		if err != nil {
-			return err
-		}
 		return err
 	}
 
@@ -347,4 +445,65 @@ func (c Comment) UpdateComment(ctx context.Context, db *sql.DB, commentID string
 	}
 
 	return nil
+}
+
+func (fs *Feedbacks) GetUserComments(ctx context.Context, db *sql.DB) error {
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return err
+	}
+
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+			return
+		}
+	}()
+
+	for idx, f := range *fs {
+		c, err := getComments(ctx, tx, f.ID)
+		if err != nil {
+			return err
+		}
+		(*fs)[idx].Comments = c
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+const getCommentsQuery = `
+	SELECT 
+	ID
+	,comment 
+	,userid
+	FROM comments
+	WHERE feedbackid=$1
+`
+
+func getComments(ctx context.Context, tx *sql.Tx, feedbackID string) ([]Comment, error) {
+	comments := make([]Comment, 0)
+	fid, err := strconv.Atoi(feedbackID)
+	if err != nil {
+		return comments, err
+	}
+
+	rows, err := tx.QueryContext(ctx, getCommentsQuery, fid)
+	if err != nil {
+		return comments, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var comment Comment
+		if err := rows.Scan(&comment.ID, &comment.Comment, &comment.UserID); err != nil {
+			return comments, err
+		}
+
+		comments = append(comments, comment)
+	}
+
+	return comments, nil
 }

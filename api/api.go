@@ -2,7 +2,6 @@ package api
 
 import (
 	"database/sql"
-	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -76,11 +75,9 @@ func New(cfg config.Config) (App, error) {
 	}
 	err = a.MigrateUpDatabase(cfg)
 	if err != nil {
-		fmt.Println("err: ", err)
 		return a, errors.Wrap(err, "not able to migrate up database")
 	}
 	a.DB = db
-	fmt.Println("db1: ", a.DB)
 	a.cfg = cfg
 
 	return a, nil
@@ -89,14 +86,16 @@ func New(cfg config.Config) (App, error) {
 // Run starts up the application
 func (a App) Run() {
 	e := echo.New()
-	e.Server.WriteTimeout = ioTimeout
-	e.Server.ReadTimeout = ioTimeout
-	e.HideBanner = true
-	e.HidePort = true
 
 	// Set up global middleware
-	e.Use(middleware.Recover())
+	//e.Use(middleware.Logger())
 
+	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
+		AllowOrigins:     []string{"*"},
+		AllowHeaders:     []string{"authorization", "Content-Type"},
+		AllowCredentials: true,
+		AllowMethods:     []string{echo.OPTIONS, echo.GET, echo.HEAD, echo.PUT, echo.PATCH, echo.POST, echo.DELETE},
+	}))
 	port := a.cfg.ListenPort
 	if port == "" {
 		port = ":8000"

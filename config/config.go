@@ -33,7 +33,6 @@ func SetUpConfig() (cfg Config, err error) {
 		return
 	}
 
-	fmt.Println(cfg)
 	cfg.DbURI = fmt.Sprintf("postgres://%s:%s/%s?user=%s&password=%s&sslmode=disable", cfg.DbHost, cfg.DbPort, cfg.DbName, cfg.DbUser, cfg.DbPass)
 	/*cfg.DbURI = fmt.Sprintf("host=%s port=%s user=%s "+
 	"password=%s dbname=%s sslmode=disable",
