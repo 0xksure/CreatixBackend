@@ -102,6 +102,10 @@ func (a App) Run() {
 	}
 	userSession := &models.UserSession{JwtSecret: a.cfg.JwtSecret}
 	openSubrouter := e.Group("/v0")
+
+	// Health
+	openSubrouter.GET("/health", func(c echo.Context) error { return c.String(http.StatusOK, "ok") })
+
 	restAPI := handler.RestAPI{
 		DB:          a.DB,
 		Logging:     a.logger,
