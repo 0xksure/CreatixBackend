@@ -42,12 +42,10 @@ func (s Session) Handler(e *echo.Group) {
 func (s Session) Signup(c echo.Context) (err error) {
 	user := new(models.User)
 	err = c.Bind(user)
-	fmt.Println("hello")
 	if err != nil {
 		s.Logging.Unsuccessful("could not parse user data", err)
 		return c.String(http.StatusBadRequest, "could not bind data")
 	}
-	fmt.Println("user: ", user)
 	pass, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
 	if err != nil {
 		s.Logging.Unsuccessful("not able to encrypt password", err)
@@ -66,7 +64,6 @@ func (s Session) Signup(c echo.Context) (err error) {
 
 // Login checks whether the user exists and creates a cookie
 func (s Session) Login(c echo.Context) error {
-	fmt.Println("Login")
 	loginRequest := new(LoginRequest)
 	err := c.Bind(loginRequest)
 	if err != nil {
@@ -74,7 +71,6 @@ func (s Session) Login(c echo.Context) error {
 		return c.String(http.StatusBadRequest, "not able to parse user")
 	}
 
-	fmt.Println("Login request: ", loginRequest)
 	resp, err := s.UserSession.LoginUser(c.Request().Context(), s.DB, loginRequest.Email, loginRequest.Password)
 	if err != nil {
 		s.Logging.Unsuccessful("not able to log in user", err)
