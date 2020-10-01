@@ -1,8 +1,6 @@
 package config
 
 import (
-	"fmt"
-
 	"github.com/kelseyhightower/envconfig"
 	"github.com/sirupsen/logrus"
 )
@@ -10,7 +8,7 @@ import (
 type Config struct {
 	Env          string `default:""`
 	DatabaseURL  string `default:"" envconfig:"DATABASE_URL"`
-	Port         string `default:":8080"`
+	Port         string `default:":8080" envconfig:"PORT"`
 	SMTPServer   string `default:""`
 	SMTPPWD      string `default:""`
 	SMTPUserName string `default:""`
@@ -26,6 +24,5 @@ func SetUpConfig() (cfg Config, err error) {
 		return
 	}
 
-	fmt.Println(cfg.DatabaseURL)
 	return cfg, err
 }

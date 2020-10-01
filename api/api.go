@@ -2,6 +2,7 @@ package api
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -98,7 +99,7 @@ func (a App) Run() {
 	}))
 	port := a.cfg.Port
 	if port == "" {
-		port = ":8000"
+		port = "8000"
 	}
 	userSession := &models.UserSession{JwtSecret: a.cfg.JwtSecret}
 	openSubrouter := e.Group("/v0")
@@ -126,5 +127,5 @@ func (a App) Run() {
 	sessionAPI.Handler(authSubrouter)
 
 	// REST API handler
-	log.Fatal(e.Start(port))
+	log.Fatal(e.Start(fmt.Sprintf(":%s", port)))
 }
