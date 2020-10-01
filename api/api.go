@@ -36,7 +36,7 @@ type (
 )
 
 func ConnectDB(cfg *config.Config) (*sql.DB, error) {
-	db, err := sql.Open("postgres", cfg.DbURI)
+	db, err := sql.Open("postgres", cfg.DatabaseURL)
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +48,7 @@ func ConnectDB(cfg *config.Config) (*sql.DB, error) {
 }
 
 func (a *App) MigrateUpDatabase(cfg config.Config) error {
-	m, err := migrate.New("file://db/migrations", cfg.DbURI)
+	m, err := migrate.New("file://db/migrations", cfg.DatabaseURL)
 	if err != nil {
 		return err
 	}
@@ -96,7 +96,7 @@ func (a App) Run() {
 		AllowCredentials: true,
 		AllowMethods:     []string{echo.OPTIONS, echo.GET, echo.HEAD, echo.PUT, echo.PATCH, echo.POST, echo.DELETE},
 	}))
-	port := a.cfg.ListenPort
+	port := a.cfg.Port
 	if port == "" {
 		port = ":8000"
 	}

@@ -8,20 +8,13 @@ import (
 )
 
 type Config struct {
-	Env           string `default:""`
-	DbUser        string `default:""`
-	DbPass        string `default:""`
-	DbName        string `default:""`
-	DbHost        string `default:""`
-	DbPort        string `default:""`
-	DbURI         string `default:""`
-	ListenPort    string `default:":8080"`
-	OriginAllowed string `default:""`
-	FromEmail     string `default:""`
-	SMTPServer    string `default:""`
-	SMTPPWD       string `default:""`
-	SMTPUserName  string `default:""`
-	JwtSecret     string `default:"secret"`
+	Env          string `default:""`
+	DatabaseURL  string `default:"" envconfig:"DATABASE_URL"`
+	Port         string `default:":8080"`
+	SMTPServer   string `default:""`
+	SMTPPWD      string `default:""`
+	SMTPUserName string `default:""`
+	JwtSecret    string `default:"secret"`
 }
 
 // SetUpConfig sets up the correct configuration for the app
@@ -33,6 +26,6 @@ func SetUpConfig() (cfg Config, err error) {
 		return
 	}
 
-	cfg.DbURI = fmt.Sprintf("postgres://%s:%s/%s?user=%s&password=%s&sslmode=disable", cfg.DbHost, cfg.DbPort, cfg.DbName, cfg.DbUser, cfg.DbPass)
+	fmt.Println(cfg.DatabaseURL)
 	return cfg, err
 }
