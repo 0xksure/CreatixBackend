@@ -22,6 +22,7 @@ type RestAPI struct {
 	Feedback    models.Feedback
 	UserSession *models.UserSession
 	Middleware  *jwtmiddleware.Middleware
+	CompanyAPI  models.CompanyAPI
 }
 
 func (api RestAPI) Handler(e *echo.Group) {
@@ -32,6 +33,8 @@ func (api RestAPI) Handler(e *echo.Group) {
 	e.PUT("/feedback", api.UpdateFeedback)
 	e.POST("/user/feedback/:fid/clap", api.ClapFeedback)
 	e.POST("/user/feedback/comment", api.CommentFeedback)
+	e.GET("/company/search/{query}", api.SearchCompany)
+	e.POST("/company/create", api.CreateCompany)
 }
 
 func validateFeedback(feedback models.Feedback) error {

@@ -17,7 +17,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-type Session struct {
+type SessionAPI struct {
 	DB          *sql.DB
 	Logging     *logging.StandardLogger
 	Cfg         config.Config
@@ -31,7 +31,7 @@ type LoginRequest struct {
 }
 
 // Handler sets up the session endpoints
-func (s Session) Handler(e *echo.Group) {
+func (s SessionAPI) Handler(e *echo.Group) {
 	e.POST("/user/signup", s.Signup)
 	e.POST("/user/login", s.Login)
 	e.POST("/user/refresh", s.Refresh)
@@ -39,23 +39,22 @@ func (s Session) Handler(e *echo.Group) {
 }
 
 // Signup signups the new user
-func (s Session) Signup(c echo.Context) (err error) {
-	user := new(models.User)
-	err = c.Bind(user)
-	fmt.Println("hello")
+func (s SessionAPI) Signup(c echo.Context) (err error) {
+	signup := new(models.Signup)
+	err = c.Bind(signup)
 	if err != nil {
 		s.Logging.Unsuccessful("could not parse user data", err)
-		return c.String(http.StatusBadRequest, "could not bind data")
-	}
-	fmt.Println("user: ", user)
-	pass, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
-	if err != nil {
-		s.Logging.Unsuccessful("not able to encrypt password", err)
-		return c.String(http.StatusBadRequest, "could not generate hashed password")
+		return c.JSON(http.StatusBadRequest, web.HttpResponse{Message: "could not bind data"})
 	}
 
-	user.Password = string(pass)
-	err = s.UserSession.CreateUser(c.Request().Context(), s.DB, *user)
+	pass, err := bcrypt.GenerateFromPassword([]byte(signup.Password), bcrypt.DefaultCost)
+	if err != nil {
+		s.Logging.Unsuccessful("not able to encrypt password", err)
+		return c.JSON(http.StatusBadRequest, web.HttpResponse{Message: "could not generate hashed password"})
+	}
+
+	signup.Password = string(pass)
+	err = s.UserSession.CreateUser(c.Request().Context(), s.DB, *signup)
 	if err != nil {
 		s.Logging.Unsuccessful("not able to create user ", err)
 		return c.String(http.StatusBadRequest, "could not create user")
@@ -65,7 +64,7 @@ func (s Session) Signup(c echo.Context) (err error) {
 }
 
 // Login checks whether the user exists and creates a cookie
-func (s Session) Login(c echo.Context) error {
+func (s SessionAPI) Login(c echo.Context) error {
 	fmt.Println("Login")
 	loginRequest := new(LoginRequest)
 	err := c.Bind(loginRequest)
@@ -91,7 +90,7 @@ func (s Session) Login(c echo.Context) error {
 }
 
 // Logout will set a new invalid cookie
-func (s Session) Logout(c echo.Context) error {
+func (s SessionAPI) Logout(c echo.Context) error {
 	cookie := &http.Cookie{
 		Name:   "token",
 		MaxAge: -1,
@@ -123,7 +122,7 @@ func (s Session) Logout(c echo.Context) error {
 
 // Refresh refreshes the cookie provided by generating a new one
 // and returning it
-func (s Session) Refresh(c echo.Context) error {
+func (s SessionAPI) Refresh(c echo.Context) error {
 	cookie, err := c.Cookie("token")
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, web.HttpResponse{Message: "cookie not found"})

@@ -32,6 +32,10 @@ type User struct {
 	Email     string `json:"email"`
 	Password  string `json:"password"`
 }
+type Signup struct {
+	User
+	Company
+}
 
 type UserSession struct {
 	ID        string
@@ -62,17 +66,32 @@ type Response struct {
 var cookieExpireTime = 30 * time.Minute
 
 var createUserQuery = `
+
+WITH newcompany AS (
+	INSERT INTO Company(Name)
+	VALUES ($6)
+	WHERE NOT EXISTS (SELECT * FROM COMPANY WHERE Name like $6)
+);
+
+WITH upsert AS (	
 	INSERT INTO users(firstname,lastname,birthday,email,password)
 	VALUES ($1,$2,$3,$4,$5)
+	RETURNING *
+)
+
+INSERT INTO USER_COMPANY(CompanyId, UserId)
+VALUES (SELECT Id from Company where name like $6,SELECT ID from upsert)
+
 `
 
 // CreateUser creates a new user in the database
-func (u UserSession) CreateUser(ctx context.Context, db *sql.DB, user User) error {
+func (u UserSession) CreateUser(ctx context.Context, db *sql.DB, signup Signup) error {
 	tx, err := db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return err
 	}
-	res, err := tx.Exec(createUserQuery, user.Firstname, user.Lastname, user.Birthday, user.Email, user.Password)
+
+	res, err := tx.Exec(createUserQuery, signup.Firstname, signup.Lastname, signup.Birthday, signup.Email, signup.Password, signup.Company)
 	if err != nil {
 		err = tx.Rollback()
 		if err != nil {

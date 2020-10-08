@@ -36,7 +36,7 @@ type (
 )
 
 func ConnectDB(cfg *config.Config) (*sql.DB, error) {
-	db, err := sql.Open("postgres", cfg.DbURI)
+	db, err := sql.Open("postgres", cfg.DatabaseUrl)
 	if err != nil {
 		return nil, err
 	}
@@ -48,7 +48,7 @@ func ConnectDB(cfg *config.Config) (*sql.DB, error) {
 }
 
 func (a *App) MigrateUpDatabase(cfg config.Config) error {
-	m, err := migrate.New("file://db/migrations", cfg.DbURI)
+	m, err := migrate.New("file://db/migrations", cfg.DatabaseUrl)
 	if err != nil {
 		return err
 	}
@@ -87,9 +87,6 @@ func New(cfg config.Config) (App, error) {
 func (a App) Run() {
 	e := echo.New()
 
-	// Set up global middleware
-	//e.Use(middleware.Logger())
-
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins:     []string{"*"},
 		AllowHeaders:     []string{"authorization", "Content-Type"},
@@ -109,11 +106,12 @@ func (a App) Run() {
 		Feedback:    models.Feedback{},
 		UserSession: userSession,
 		Middleware:  &jwtmiddleware.Middleware{},
+		CompanyAPI:  models.CompanyAPI{DB: a.DB},
 	}
 	restAPI.Handler(openSubrouter)
 
 	authSubrouter := e.Group("/v0/auth")
-	sessionAPI := handler.Session{
+	sessionAPI := handler.SessionAPI{
 		DB:          a.DB,
 		Logging:     a.logger,
 		Cfg:         a.cfg,

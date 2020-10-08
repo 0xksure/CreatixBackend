@@ -1,8 +1,6 @@
 package config
 
 import (
-	"fmt"
-
 	"github.com/kelseyhightower/envconfig"
 	"github.com/sirupsen/logrus"
 )
@@ -15,6 +13,7 @@ type Config struct {
 	DbHost        string `default:""`
 	DbPort        string `default:""`
 	DbURI         string `default:""`
+	DatabaseUrl   string `split_words:"true"`
 	ListenPort    string `default:":8080"`
 	OriginAllowed string `default:""`
 	FromEmail     string `default:""`
@@ -32,11 +31,5 @@ func SetUpConfig() (cfg Config, err error) {
 	if err != nil {
 		return
 	}
-
-	cfg.DbURI = fmt.Sprintf("postgres://%s:%s/%s?user=%s&password=%s&sslmode=disable", cfg.DbHost, cfg.DbPort, cfg.DbName, cfg.DbUser, cfg.DbPass)
-	/*cfg.DbURI = fmt.Sprintf("host=%s port=%s user=%s "+
-	"password=%s dbname=%s sslmode=disable",
-	cfg.DbHost, cfg.DbPort, cfg.DbUser, cfg.DbPass, cfg.DbName)
-	*/
 	return cfg, err
 }
