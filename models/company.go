@@ -13,7 +13,7 @@ type CompanyAPI struct {
 
 type Company struct {
 	ID   string `json:"id"`
-	Name string `json:"name"`
+	Name string `json:"companyName"`
 }
 
 type Team struct {

@@ -28,7 +28,6 @@ type User struct {
 	ID        string `json:"id"`
 	Firstname string `json:"firstname"`
 	Lastname  string `json:"lastname"`
-	Birthday  string `json:"birthday"`
 	Email     string `json:"email"`
 	Password  string `json:"password"`
 }
@@ -66,22 +65,19 @@ type Response struct {
 var cookieExpireTime = 30 * time.Minute
 
 var createUserQuery = `
+INSERT INTO Company (Name)
+SELECT ($5)
+WHERE NOT EXISTS (SELECT * FROM COMPANY WHERE Name like $5);
 
-WITH newcompany AS (
-	INSERT INTO Company(Name)
-	VALUES ($6)
-	WHERE NOT EXISTS (SELECT * FROM COMPANY WHERE Name like $6)
-);
-
-WITH upsert AS (	
-	INSERT INTO users(firstname,lastname,birthday,email,password)
-	VALUES ($1,$2,$3,$4,$5)
-	RETURNING *
-)
+INSERT INTO users(firstname,lastname,email,password)
+VALUES ($1,$2,$3,$4);
 
 INSERT INTO USER_COMPANY(CompanyId, UserId)
-VALUES (SELECT Id from Company where name like $6,SELECT ID from upsert)
-
+SELECT c.Id,u.ID
+    FROM Company c
+	LEFT JOIN users u
+	ON u.email=$3
+	WHERE c.Name=$5
 `
 
 // CreateUser creates a new user in the database
@@ -90,15 +86,17 @@ func (u UserSession) CreateUser(ctx context.Context, db *sql.DB, signup Signup) 
 	if err != nil {
 		return err
 	}
-
-	res, err := tx.Exec(createUserQuery, signup.Firstname, signup.Lastname, signup.Birthday, signup.Email, signup.Password, signup.Company)
-	if err != nil {
-		err = tx.Rollback()
+	defer func() {
 		if err != nil {
-			return err
+			tx.Rollback()
+			return
 		}
+	}()
+	res, err := tx.Exec(createUserQuery, signup.Firstname, signup.Lastname, signup.Email, signup.Password, signup.Name)
+	if err != nil {
 		return err
 	}
+
 	err = tx.Commit()
 	if err != nil {
 		return err
@@ -120,7 +118,6 @@ var findUserByEmailQuery = `
 	ID
 	,Firstname
 	,Lastname
-	,Birthday
 	,Email
 	,Password
 	FROM users
@@ -135,7 +132,7 @@ func findUserByEmail(ctx context.Context, db *sql.DB, email string) (User, error
 		return user, err
 	}
 
-	err = tx.QueryRow(findUserByEmailQuery, email).Scan(&user.ID, &user.Firstname, &user.Lastname, &user.Birthday, &user.Email, &user.Password)
+	err = tx.QueryRow(findUserByEmailQuery, email).Scan(&user.ID, &user.Firstname, &user.Lastname, &user.Email, &user.Password)
 	if err != nil {
 		return user, err
 	}
