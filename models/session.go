@@ -65,19 +65,20 @@ type Response struct {
 var cookieExpireTime = 30 * time.Minute
 
 var createUserQuery = `
-INSERT INTO Company (Name)
-SELECT ($5)
-WHERE NOT EXISTS (SELECT * FROM COMPANY WHERE Name like $5);
-
-INSERT INTO users(firstname,lastname,email,password)
-VALUES ($1,$2,$3,$4);
+WITH new_company AS (
+	INSERT INTO company(Name)
+	SELECT CAST($5 AS VARCHAR)
+	WHERE NOT EXISTS (SELECT * FROM COMPANY WHERE Name=$5)
+	RETURNING *
+),
+new_user AS (
+	INSERT INTO users(firstname,lastname,email,password)
+	VALUES ($1,$2,$3,$4)
+	RETURNING *
+)
 
 INSERT INTO USER_COMPANY(CompanyId, UserId)
-SELECT c.Id,u.ID
-    FROM Company c
-	LEFT JOIN users u
-	ON u.email=$3
-	WHERE c.Name=$5
+values ((SELECT Id from new_company),(SELECT ID FROM new_user))
 `
 
 // CreateUser creates a new user in the database

@@ -123,10 +123,13 @@ func (s SessionAPI) Logout(c echo.Context) error {
 // Refresh refreshes the cookie provided by generating a new one
 // and returning it
 func (s SessionAPI) Refresh(c echo.Context) error {
+	fmt.Println("Refresgh")
 	cookie, err := c.Cookie("token")
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, web.HttpResponse{Message: "cookie not found"})
 	}
+
+	fmt.Println("cookie: ", cookie)
 
 	tokenValue := cookie.Value
 	ok, err := utils.IsTokenValid(tokenValue, []byte("secret"))
@@ -134,7 +137,7 @@ func (s SessionAPI) Refresh(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, web.HttpResponse{Message: fmt.Sprintf("invalid cookie: %s", err.Error())})
 	}
 
-	expiresAt := time.Now().Add(time.Minute * 5)
+	expiresAt := time.Now().Add(time.Minute * 30)
 	newToken, err := utils.NewToken(expiresAt, "1", []byte("secret"))
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, web.HttpResponse{Message: "could not generate new token"})

@@ -27,7 +27,7 @@ type RestAPI struct {
 
 func (api RestAPI) Handler(e *echo.Group) {
 	e.Use(api.Middleware.JwtVerify)
-	e.POST("/feedback", api.PostFeedback)
+	e.POST("/user/feedback", api.PostFeedback)
 	e.GET("/user/feedback", api.GetUserFeedback)
 	e.DELETE("/feedback/:fid", api.DeleteFeedback)
 	e.PUT("/feedback", api.UpdateFeedback)
@@ -130,7 +130,7 @@ func (api RestAPI) getUserFeedback(ctx context.Context, userID string) (feedback
 func (api RestAPI) GetUserFeedback(c echo.Context) error {
 	feedbacks, err := api.getUserFeedback(c.Request().Context(), api.Middleware.Uid)
 	if err != nil {
-		api.Logging.Unsuccessful("creatix.feedback.getUserFeedback: not able to get feedback claps", err)
+		api.Logging.Unsuccessful("creatix.feedback.getUserFeedback: not able to get feedback", err)
 		return err
 	}
 	return c.JSON(http.StatusOK, feedbacks)

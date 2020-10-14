@@ -1,6 +1,6 @@
 CREATE TABLE FEEDBACK
 (
-    ID SERIAL PRIMARY KEY,
+    Id SERIAL PRIMARY KEY,
     UserID int NOT NULL,
     Title VARCHAR(40),
     Description VARCHAR(40),
@@ -16,7 +16,7 @@ CREATE TABLE FEEDBACK
 
 CREATE TABLE CLAPS
 (
-    ID SERIAL PRIMARY KEY,
+    Id SERIAL PRIMARY KEY,
     UserID int NOT NULL,
     FeedbackID INT NOT NULL,
     CreatedAt TIMESTAMP
@@ -26,17 +26,17 @@ DeletedAt TIMESTAMP,
 
 CONSTRAINT fk_clap_feedback FOREIGN KEY
     (FeedbackID) REFERENCES FEEDBACK
-    (ID),
+    (Id),
 CONSTRAINT fk_clap_user FOREIGN KEY
-    (UserID) REFERENCES USERS
-    (ID)
+    (UserId) REFERENCES USERS
+    (Id)
 );
 
 CREATE TABLE COMMENTS
 (
-    ID SERIAL PRIMARY KEY,
-    UserID int NOT NULL,
-    FeedbackID INT NOT NULL,
+    Id SERIAL PRIMARY KEY,
+    UserId int NOT NULL,
+    FeedbackId INT NOT NULL,
     Comment VARCHAR(1000),
     CreatedAt TIMESTAMP
     WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -44,11 +44,11 @@ CREATE TABLE COMMENTS
     DeletedAt TIMESTAMP,
 
     CONSTRAINT fk_comment_feedback FOREIGN KEY
-    (FeedbackID) REFERENCES FEEDBACK
-    (ID),
+    (FeedbackId) REFERENCES FEEDBACK
+    (Id),
     CONSTRAINT fk_comment_user FOREIGN KEY
-    (UserID) REFERENCES USERS
-    (ID)
+    (UserId) REFERENCES USERS
+    (Id)
 );
 
         
