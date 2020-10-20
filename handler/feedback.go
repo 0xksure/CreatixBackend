@@ -32,7 +32,7 @@ func (api RestAPI) Handler(e *echo.Group) {
 	e.DELETE("/feedback/:fid", api.DeleteFeedback)
 	e.PUT("/feedback", api.UpdateFeedback)
 	e.POST("/user/feedback/:fid/clap", api.ClapFeedback)
-	e.POST("/user/feedback/comment", api.CommentFeedback)
+	e.POST("/user/feedback/:fid/comment", api.CommentFeedback)
 	e.GET("/company/search/{query}", api.SearchCompany)
 	e.POST("/company/create", api.CreateCompany)
 }
@@ -143,6 +143,8 @@ func (api RestAPI) CommentFeedback(c echo.Context) (err error) {
 		api.Logging.Unsuccessful("creatix.feedback.commentfeedback: not able to bind comment", err)
 		return c.JSON(http.StatusBadRequest, web.HttpResponse{Message: "not able to bind comment"})
 	}
+	comment.FeedbackID = c.Param("fid")
+	comment.UserID = api.Middleware.Uid
 
 	if comment.ID != "" {
 		err = comment.UpdateComment(c.Request().Context(), api.DB)

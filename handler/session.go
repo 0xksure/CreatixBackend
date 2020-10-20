@@ -65,7 +65,6 @@ func (s SessionAPI) Signup(c echo.Context) (err error) {
 
 // Login checks whether the user exists and creates a cookie
 func (s SessionAPI) Login(c echo.Context) error {
-	fmt.Println("Login")
 	loginRequest := new(LoginRequest)
 	err := c.Bind(loginRequest)
 	if err != nil {
@@ -73,7 +72,6 @@ func (s SessionAPI) Login(c echo.Context) error {
 		return c.String(http.StatusBadRequest, "not able to parse user")
 	}
 
-	fmt.Println("Login request: ", loginRequest)
 	resp, err := s.UserSession.LoginUser(c.Request().Context(), s.DB, loginRequest.Email, loginRequest.Password)
 	if err != nil {
 		s.Logging.Unsuccessful("not able to log in user", err)
@@ -123,13 +121,10 @@ func (s SessionAPI) Logout(c echo.Context) error {
 // Refresh refreshes the cookie provided by generating a new one
 // and returning it
 func (s SessionAPI) Refresh(c echo.Context) error {
-	fmt.Println("Refresgh")
 	cookie, err := c.Cookie("token")
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, web.HttpResponse{Message: "cookie not found"})
 	}
-
-	fmt.Println("cookie: ", cookie)
 
 	tokenValue := cookie.Value
 	ok, err := utils.IsTokenValid(tokenValue, []byte("secret"))

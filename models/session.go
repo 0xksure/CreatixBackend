@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/kristohberg/CreatixBackend/utils"
@@ -18,7 +17,6 @@ var SigningKey = []byte("secret")
 type Timestamp time.Time
 
 func (t *Timestamp) UnmarshalParam(src string) error {
-	fmt.Println("Unmarshal")
 	ts, err := time.Parse(time.RFC3339, src)
 	*t = Timestamp(ts)
 	return err
