@@ -1,7 +1,6 @@
 package utils
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
@@ -68,7 +67,6 @@ func IsTokenValid(tokenString string, secret []byte) (bool, error) {
 		return false, errors.New("could not get claims")
 	}
 
-	fmt.Println("time diff: ", time.Unix(claims.ExpiresAt, 0).Sub(time.Now()))
 	if time.Unix(claims.ExpiresAt, 0).Sub(time.Now()) < 60*time.Second {
 		return false, errors.New("invalid token")
 	}

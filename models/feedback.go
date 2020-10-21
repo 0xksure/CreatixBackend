@@ -17,7 +17,7 @@ type Feedback struct {
 	Description string    `json:"description"`
 	Comments    []Comment `json:"comments"`
 	Claps       []Clap    `json:"claps"`
-	UpdatedAt   string    `json:"updatedAt`
+	UpdatedAt   *string   `json:"updatedAt`
 }
 
 type Clap struct {

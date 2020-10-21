@@ -65,7 +65,6 @@ func (s SessionAPI) Signup(c echo.Context) (err error) {
 
 // Login checks whether the user exists and creates a cookie
 func (s SessionAPI) Login(c echo.Context) error {
-	fmt.Println("Login")
 	loginRequest := new(LoginRequest)
 	err := c.Bind(loginRequest)
 	if err != nil {
@@ -73,7 +72,6 @@ func (s SessionAPI) Login(c echo.Context) error {
 		return c.String(http.StatusBadRequest, "not able to parse user")
 	}
 
-	fmt.Println("Login request: ", loginRequest)
 	resp, err := s.UserSession.LoginUser(c.Request().Context(), s.DB, loginRequest.Email, loginRequest.Password)
 	if err != nil {
 		s.Logging.Unsuccessful("not able to log in user", err)
@@ -134,7 +132,7 @@ func (s SessionAPI) Refresh(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, web.HttpResponse{Message: fmt.Sprintf("invalid cookie: %s", err.Error())})
 	}
 
-	expiresAt := time.Now().Add(time.Minute * 5)
+	expiresAt := time.Now().Add(time.Minute * 30)
 	newToken, err := utils.NewToken(expiresAt, "1", []byte("secret"))
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, web.HttpResponse{Message: "could not generate new token"})
