@@ -14,7 +14,7 @@ type Config struct {
 	DbPort        string `default:""`
 	DbURI         string `default:""`
 	DatabaseUrl   string `split_words:"true"`
-	ListenPort    string `split_words:"true" default:":8080"`
+	Port          string `split_words:"true" default:":8080"`
 	OriginAllowed string `default:""`
 	FromEmail     string `default:""`
 	SMTPServer    string `default:""`

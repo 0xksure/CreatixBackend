@@ -93,7 +93,7 @@ func (a App) Run() {
 		AllowCredentials: true,
 		AllowMethods:     []string{echo.OPTIONS, echo.GET, echo.HEAD, echo.PUT, echo.PATCH, echo.POST, echo.DELETE},
 	}))
-	port := a.cfg.ListenPort
+	port := a.cfg.Port
 	if port == "" {
 		port = ":8000"
 	}
