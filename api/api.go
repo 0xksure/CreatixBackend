@@ -2,6 +2,7 @@ package api
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 	"net/http"
 	"time"
@@ -88,12 +89,12 @@ func (a App) Run() {
 	e := echo.New()
 
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-		AllowOrigins:     []string{"*"},
+		AllowOrigins:     []string{"http://localhost:3030", "https://thecreatix.herokuapp.com"},
 		AllowHeaders:     []string{"authorization", "Content-Type"},
 		AllowCredentials: true,
 		AllowMethods:     []string{echo.OPTIONS, echo.GET, echo.HEAD, echo.PUT, echo.PATCH, echo.POST, echo.DELETE},
 	}))
-	port := a.cfg.Port
+	port := fmt.Sprintf(":%s", a.cfg.Port)
 	if port == "" {
 		port = ":8000"
 	}

@@ -82,6 +82,7 @@ func (s SessionAPI) Login(c echo.Context) error {
 		Value:   resp.Token,
 		Expires: resp.ExpiresAt,
 		Path:    "/v0",
+		Domain:  s.Cfg.AllowCookieDomain,
 	}
 	c.SetCookie(cookie)
 	return c.JSON(http.StatusOK, resp)
@@ -142,6 +143,7 @@ func (s SessionAPI) Refresh(c echo.Context) error {
 		Value:   newToken,
 		Expires: expiresAt,
 		Path:    "/v0",
+		Domain:  s.Cfg.AllowCookieDomain,
 	})
 	return c.JSON(http.StatusOK, web.HttpResponse{Message: "ok"})
 }
