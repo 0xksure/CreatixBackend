@@ -154,7 +154,7 @@ func (u *UserSession) LoginUser(ctx context.Context, db *sql.DB, userEmail strin
 		return resp, errors.New("passwords do not match")
 	}
 
-	expiresAt := time.Now().Add(time.Minute * 30)
+	expiresAt := time.Now().Local().Add(time.Minute * 30)
 	tokenString, err := utils.NewToken(expiresAt, existingUser.ID, []byte("secret"))
 	if err != nil {
 		resp.Message = "Either the user does not exists or the password is incorrect"

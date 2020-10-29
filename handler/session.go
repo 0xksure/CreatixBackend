@@ -78,11 +78,13 @@ func (s SessionAPI) Login(c echo.Context) error {
 		return c.String(http.StatusBadRequest, "no user")
 	}
 	cookie := &http.Cookie{
-		Name:    "token",
-		Value:   resp.Token,
-		Expires: resp.ExpiresAt,
-		Path:    "/v0",
-		Domain:  s.Cfg.AllowCookieDomain,
+		Name:     "token",
+		Value:    resp.Token,
+		Expires:  resp.ExpiresAt,
+		Path:     "/v0",
+		Domain:   s.Cfg.AllowCookieDomain,
+		SameSite: http.SameSiteNoneMode,
+		Secure:   true,
 	}
 	c.SetCookie(cookie)
 	return c.JSON(http.StatusOK, resp)
@@ -91,9 +93,11 @@ func (s SessionAPI) Login(c echo.Context) error {
 // Logout will set a new invalid cookie
 func (s SessionAPI) Logout(c echo.Context) error {
 	cookie := &http.Cookie{
-		Name:   "token",
-		MaxAge: -1,
-		Path:   "/v0",
+		Name:     "token",
+		MaxAge:   -1,
+		Path:     "/v0",
+		SameSite: http.SameSiteNoneMode,
+		Secure:   true,
 	}
 	c.SetCookie(cookie)
 	return c.String(http.StatusOK, "old cookie deleted, logged out")
@@ -139,11 +143,13 @@ func (s SessionAPI) Refresh(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, web.HttpResponse{Message: "could not generate new token"})
 	}
 	c.SetCookie(&http.Cookie{
-		Name:    "token",
-		Value:   newToken,
-		Expires: expiresAt,
-		Path:    "/v0",
-		Domain:  s.Cfg.AllowCookieDomain,
+		Name:     "token",
+		Value:    newToken,
+		Expires:  expiresAt,
+		Path:     "/v0",
+		Domain:   s.Cfg.AllowCookieDomain,
+		SameSite: http.SameSiteNoneMode,
+		Secure:   true,
 	})
 	return c.JSON(http.StatusOK, web.HttpResponse{Message: "ok"})
 }
