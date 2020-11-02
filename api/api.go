@@ -98,7 +98,7 @@ func (a App) Run() {
 	if port == "" {
 		port = ":8000"
 	}
-	userSession := &models.UserSession{JwtSecret: a.cfg.JwtSecret}
+	userSession := &models.UserSession{TokenSecret: a.cfg.TokenSecret}
 	openSubrouter := e.Group("/v0")
 	restAPI := handler.RestAPI{
 		DB:          a.DB,
@@ -106,7 +106,7 @@ func (a App) Run() {
 		Cfg:         a.cfg,
 		Feedback:    models.Feedback{},
 		UserSession: userSession,
-		Middleware:  &jwtmiddleware.Middleware{},
+		Middleware:  &jwtmiddleware.Middleware{Cfg: a.cfg},
 		CompanyAPI:  models.CompanyAPI{DB: a.DB},
 	}
 	restAPI.Handler(openSubrouter)

@@ -72,19 +72,21 @@ func (s SessionAPI) Login(c echo.Context) error {
 		return c.String(http.StatusBadRequest, "not able to parse user")
 	}
 
-	resp, err := s.UserSession.LoginUser(c.Request().Context(), s.DB, loginRequest.Email, loginRequest.Password)
+	resp, err := s.UserSession.LoginUser(c.Request().Context(), s.DB, loginRequest.Email, loginRequest.Password, s.Cfg.TokenExpirationTimeMinutes)
 	if err != nil {
 		s.Logging.Unsuccessful("not able to log in user", err)
 		return c.String(http.StatusBadRequest, "no user")
 	}
 	cookie := &http.Cookie{
-		Name:     "token",
-		Value:    resp.Token,
-		Expires:  resp.ExpiresAt,
-		Path:     "/v0",
-		Domain:   s.Cfg.AllowCookieDomain,
-		SameSite: http.SameSiteNoneMode,
-		Secure:   true,
+		Name:    "token",
+		Value:   resp.Token,
+		Expires: resp.ExpiresAt,
+		Path:    "/v0",
+		Domain:  s.Cfg.AllowCookieDomain,
+	}
+	if s.Cfg.Env == "prod" {
+		cookie.SameSite = http.SameSiteNoneMode
+		cookie.Secure = true
 	}
 	c.SetCookie(cookie)
 	return c.JSON(http.StatusOK, resp)
@@ -93,35 +95,17 @@ func (s SessionAPI) Login(c echo.Context) error {
 // Logout will set a new invalid cookie
 func (s SessionAPI) Logout(c echo.Context) error {
 	cookie := &http.Cookie{
-		Name:     "token",
-		MaxAge:   -1,
-		Path:     "/v0",
-		SameSite: http.SameSiteNoneMode,
-		Secure:   true,
+		Name:   "token",
+		MaxAge: -1,
+		Path:   "/v0",
+	}
+	if s.Cfg.Env == "prod" {
+		cookie.SameSite = http.SameSiteNoneMode
+		cookie.Secure = true
 	}
 	c.SetCookie(cookie)
 	return c.String(http.StatusOK, "old cookie deleted, logged out")
 }
-
-// ForgotPassword will if the user exists send a
-// new passwordlink
-/*func (s Session) ForgotPassword(c echo.Context) error {
-	var forgotpassword models.PasswordRequest
-	err := c.Bind(forgotpassword)
-	if err != nil {
-		s.Logging.Unsuccessful("not able to parse user", err)
-		return c.String(http.StatusBadRequest, "not able to parse email")
-	}
-
-	resp, err := s.UserSession.ForgotPassword(c, s.DB, forgotpassword.Email)
-	if err != nil {
-		return c.String(http.StatusInternalServerError, "not able to generate new password")
-	}
-
-	return c.JSON(http.StatusOK, resp)
-
-}
-*/
 
 // Refresh refreshes the cookie provided by generating a new one
 // and returning it
@@ -132,24 +116,18 @@ func (s SessionAPI) Refresh(c echo.Context) error {
 	}
 
 	tokenValue := cookie.Value
-	ok, err := utils.IsTokenValid(tokenValue, []byte("secret"))
-	if err != nil || !ok {
+	err = utils.IsTokenValid(tokenValue, []byte(s.Cfg.TokenSecret))
+	if err != nil {
 		return c.JSON(http.StatusBadRequest, web.HttpResponse{Message: fmt.Sprintf("invalid cookie: %s", err.Error())})
 	}
 
-	expiresAt := time.Now().Add(time.Minute * 30)
-	newToken, err := utils.NewToken(expiresAt, "1", []byte("secret"))
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, web.HttpResponse{Message: "could not generate new token"})
+	expiresAt := time.Now().Add(time.Minute * time.Duration(s.Cfg.TokenExpirationTimeMinutes))
+	cookie.Expires = expiresAt
+	cookie.Path = "/v0"
+	if s.Cfg.Env == "prod" {
+		cookie.SameSite = http.SameSiteNoneMode
+		cookie.Secure = true
 	}
-	c.SetCookie(&http.Cookie{
-		Name:     "token",
-		Value:    newToken,
-		Expires:  expiresAt,
-		Path:     "/v0",
-		Domain:   s.Cfg.AllowCookieDomain,
-		SameSite: http.SameSiteNoneMode,
-		Secure:   true,
-	})
-	return c.JSON(http.StatusOK, web.HttpResponse{Message: "ok"})
+	c.SetCookie(cookie)
+	return c.JSON(http.StatusOK, "")
 }

@@ -12,7 +12,6 @@ import (
 )
 
 //
-var SigningKey = []byte("secret")
 
 type Timestamp time.Time
 
@@ -35,8 +34,8 @@ type Signup struct {
 }
 
 type UserSession struct {
-	ID        string
-	JwtSecret string
+	ID          string
+	TokenSecret string
 }
 
 func (u UserSession) Valid() error {
@@ -141,7 +140,7 @@ func findUserByEmail(ctx context.Context, db *sql.DB, email string) (User, error
 
 // LoginUser checks if the user given password and username exists
 // if it does
-func (u *UserSession) LoginUser(ctx context.Context, db *sql.DB, userEmail string, password string) (Response, error) {
+func (u *UserSession) LoginUser(ctx context.Context, db *sql.DB, userEmail string, password string, expirationTimeMinutes int) (Response, error) {
 	var resp Response
 	existingUser, err := findUserByEmail(ctx, db, userEmail)
 	if err != nil {
@@ -154,8 +153,8 @@ func (u *UserSession) LoginUser(ctx context.Context, db *sql.DB, userEmail strin
 		return resp, errors.New("passwords do not match")
 	}
 
-	expiresAt := time.Now().Local().Add(time.Minute * 30)
-	tokenString, err := utils.NewToken(expiresAt, existingUser.ID, []byte("secret"))
+	expiresAt := time.Now().Local().Add(time.Minute * time.Duration(expirationTimeMinutes))
+	tokenString, err := utils.NewToken(expiresAt, existingUser.ID, []byte(u.TokenSecret))
 	if err != nil {
 		resp.Message = "Either the user does not exists or the password is incorrect"
 		return resp, err
@@ -165,42 +164,9 @@ func (u *UserSession) LoginUser(ctx context.Context, db *sql.DB, userEmail strin
 	resp.Message = "logged in"
 	resp.Token = tokenString
 	resp.ExpiresAt = expiresAt
+	resp.User = existingUser
 
 	u.ID = existingUser.ID
 
 	return resp, nil
 }
-
-// ForgotPassword send a new password link
-/*
-func (u UserSession) ForgotPassword(ctx context.Context, db *sql.DB, email string) (resp Response, err error) {
-	// Create New password request
-	user, err := findUserByEmail(ctx, db, email)
-	if err != nil {
-		resp.Message = "Either the user does not exists or the password is incorrect"
-		return resp, err
-	}
-
-	// Create request ID
-	guid, err := uuid.NewRandom()
-	if err != nil {
-		resp.Message = "Either the user does not exists or the password is incorrect"
-		return resp, err
-	}
-
-	// Has gui
-	hashedGUID, err := bcrypt.GenerateFromPassword([]byte(guid.String()), bcrypt.DefaultCost)
-	if err != nil {
-		resp.Message = "Either the user does not exists or the password is incorrect"
-		return resp, err
-	}
-
-	pce := &PasswordChangeRequest{
-		ReqID:  string(hashedGUID),
-		UserID: user.ID,
-	}
-
-	// send mail to user
-	return resp, nil
-}
-*/

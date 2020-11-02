@@ -1,11 +1,13 @@
 package jwtmiddleware
 
 import (
-	"fmt"
 	"net/http"
 	"sync"
+	"time"
 
 	jwt "github.com/dgrijalva/jwt-go"
+	"github.com/kristohberg/CreatixBackend/config"
+	"github.com/kristohberg/CreatixBackend/utils"
 	"github.com/labstack/echo"
 )
 
@@ -17,6 +19,7 @@ type Middleware struct {
 	Claim *MiddlewareClaim
 	Uid   string
 	mutex sync.RWMutex
+	Cfg   config.Config
 }
 
 type MiddlewareClaim struct {
@@ -35,23 +38,19 @@ func (m *Middleware) JwtVerify(next echo.HandlerFunc) echo.HandlerFunc {
 			return c.JSON(http.StatusBadRequest, Exception{Message: "bad request"})
 		}
 
-		tknStr := cookie.Value
-		token, err := jwt.ParseWithClaims(tknStr, &MiddlewareClaim{}, func(token *jwt.Token) (interface{}, error) {
-			return []byte("secret"), nil
-		})
-
+		tokenValue := cookie.Value
+		err = utils.IsTokenValid(tokenValue, []byte(m.Cfg.TokenSecret))
 		if err != nil {
-			if err == jwt.ErrSignatureInvalid {
-				return c.JSON(http.StatusUnauthorized, Exception{Message: "bad request"})
-			}
-			return c.JSON(http.StatusUnauthorized, Exception{Message: fmt.Sprintf("err1: %s", err.Error())})
+			return c.JSON(http.StatusBadRequest, Exception{Message: err.Error()})
 		}
-
-		claims, ok := token.Claims.(*MiddlewareClaim)
-		if !ok || !token.Valid {
-			return c.JSON(http.StatusUnauthorized, Exception{Message: fmt.Sprintf("err2: %s", err.Error())})
+		claims, err := utils.GetClaims(tokenValue, []byte(m.Cfg.TokenSecret))
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, Exception{Message: err.Error()})
 		}
-		m.Uid = claims.Id
+		expiresAt := time.Now().Add(time.Minute * time.Duration(m.Cfg.TokenExpirationTimeMinutes))
+		cookie.Expires = expiresAt
+		c.SetCookie(cookie)
+		m.Uid = claims.UserID
 		return next(c)
 	}
 }
