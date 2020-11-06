@@ -9,6 +9,21 @@ import (
 	"github.com/pkg/errors"
 )
 
+type WebSocketAction int
+
+const (
+	NewFeedback     WebSocketAction = 1
+	ClapFeedback    WebSocketAction = 2
+	CommentFeedback WebSocketAction = 3
+)
+
+type WebSocketRequest struct {
+	Action     WebSocketAction `json:"action"`
+	FeecbackID string          `json:"feedbackId"`
+	Feedback   Feedback        `json:"feedback"`
+	Comment    Comment         `json:"comment"`
+}
+
 type Feedback struct {
 	ID          string    `json:"id"`
 	UserID      string    `json:"userId"`
@@ -30,6 +45,7 @@ type Comment struct {
 	ID         string `json:"id"`
 	UserID     string `json:"userId"`
 	FeedbackID string `json:"feedbackId"`
+	Person     Person `json:"person"`
 	Comment    string `json:"comment"`
 }
 
@@ -476,12 +492,16 @@ func (fs *Feedbacks) GetUserComments(ctx context.Context, db *sql.DB) error {
 }
 
 const getCommentsQuery = `
-	SELECT 
-	ID
-	,comment 
-	,userid
-	FROM comments
-	WHERE feedbackid=$1
+SELECT 
+c.ID
+,c.comment 
+,c.userid
+,u.firstname
+,u.lastname
+FROM comments as c
+LEFT JOIN 
+(SELECT id,firstname,lastname FROM users ) as u on u.id = c.userid 
+WHERE feedbackid=$1
 `
 
 func getComments(ctx context.Context, tx *sql.Tx, feedbackID string) ([]Comment, error) {
@@ -498,7 +518,7 @@ func getComments(ctx context.Context, tx *sql.Tx, feedbackID string) ([]Comment,
 	defer rows.Close()
 	for rows.Next() {
 		var comment Comment
-		if err := rows.Scan(&comment.ID, &comment.Comment, &comment.UserID); err != nil {
+		if err := rows.Scan(&comment.ID, &comment.Comment, &comment.UserID, &comment.Person.Firstname, &comment.Person.Lastname); err != nil {
 			return comments, err
 		}
 

@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"net/http"
 
+	"github.com/gorilla/websocket"
 	jwtmiddleware "github.com/kristohberg/CreatixBackend/middleware"
 	"github.com/kristohberg/CreatixBackend/models"
 	"github.com/kristohberg/CreatixBackend/web"
@@ -35,6 +37,7 @@ func (api RestAPI) Handler(e *echo.Group) {
 	e.POST("/user/feedback/:fid/comment", api.CommentFeedback)
 	e.GET("/company/search/{query}", api.SearchCompany)
 	e.POST("/company/create", api.CreateCompany)
+	e.GET("/ws/feedback", api.FeedbackWebSocket)
 }
 
 func validateFeedback(feedback models.Feedback) error {
@@ -48,16 +51,25 @@ func validateFeedback(feedback models.Feedback) error {
 	return nil
 }
 
+func (api RestAPI) postFeedback(feedback *models.Feedback, ctx context.Context) (err error) {
+	feedback.UserID = api.Middleware.Uid
+	if err = feedback.CreateFeedback(ctx, api.DB); err != nil {
+		api.Logging.Unsuccessful("creatix.feedback.postfeedback: not able to save feedback", err)
+		return
+	}
+	return nil
+}
+
 // PostFeedback posts feedback from user
 func (api RestAPI) PostFeedback(c echo.Context) (err error) {
 	feedback := new(models.Feedback)
 	if err = c.Bind(feedback); err != nil {
 		return
 	}
-	feedback.UserID = api.Middleware.Uid
-	if err = feedback.CreateFeedback(c.Request().Context(), api.DB); err != nil {
-		api.Logging.Unsuccessful("creatix.feedback.postfeedback: not able to save feedback", err)
-		return
+	err = api.postFeedback(feedback, c.Request().Context())
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, web.HttpResponse{Message: "not able to post feedback"})
+
 	}
 	return c.JSON(http.StatusOK, web.HttpResponse{Message: "posted feedback"})
 }
@@ -136,6 +148,72 @@ func (api RestAPI) GetUserFeedback(c echo.Context) error {
 	return c.JSON(http.StatusOK, feedbacks)
 }
 
+var upgrader = websocket.Upgrader{ReadBufferSize: 4096,
+	WriteBufferSize:   4096,
+	EnableCompression: true,
+	CheckOrigin: func(r *http.Request) bool {
+		return true
+	}}
+
+func (api RestAPI) FeedbackWebSocket(c echo.Context) error {
+	ws, err := upgrader.Upgrade(c.Response(), c.Request(), nil)
+	if err != nil {
+		return err
+	}
+	defer ws.Close()
+
+	for {
+		// SEND
+		feedbacks, err := api.getUserFeedback(c.Request().Context(), api.Middleware.Uid)
+		if err != nil {
+			api.Logging.Unsuccessful("creatix.feedback.FeedbackWebsocket: not able to get feedback", err)
+			break
+		}
+		if err = ws.WriteJSON(feedbacks); err != nil {
+			api.Logging.Unsuccessful("creatix.feedback.FeedbackWebsocket: not able to write feedback", err)
+			break
+		}
+
+		// Receive
+		wsRequest := models.WebSocketRequest{}
+		err = ws.ReadJSON(&wsRequest)
+		if err != nil {
+			api.Logging.Unsuccessful("creatix.feedback.FeedbackWebsocket: not able to parse feedback", err)
+
+		}
+		switch wsRequest.Action {
+		case 1:
+			api.postFeedback(&wsRequest.Feedback, c.Request().Context())
+		case 2:
+			api.Feedback.ClapFeedback(c.Request().Context(), api.DB, api.Middleware.Uid, wsRequest.FeecbackID)
+		case 3:
+			api.commentFeedback(wsRequest.Comment, c.Request().Context())
+		default:
+			api.Logging.Unsuccessful(fmt.Sprintf("creatix.feedback.FeedbackWebsocket: option %d is not a valid ws option", wsRequest.Action), err)
+			break
+		}
+
+	}
+	return nil
+}
+
+func (api RestAPI) commentFeedback(comment models.Comment, ctx context.Context) (err error) {
+	comment.UserID = api.Middleware.Uid
+
+	if comment.ID != "" {
+		err = comment.UpdateComment(ctx, api.DB)
+		if err != nil {
+			return err
+		}
+	} else {
+		err = comment.CommentFeedback(ctx, api.DB, api.Middleware.Uid)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // CommentFeedback comments a given feedback
 func (api RestAPI) CommentFeedback(c echo.Context) (err error) {
 	comment := new(models.Comment)
@@ -144,20 +222,10 @@ func (api RestAPI) CommentFeedback(c echo.Context) (err error) {
 		return c.JSON(http.StatusBadRequest, web.HttpResponse{Message: "not able to bind comment"})
 	}
 	comment.FeedbackID = c.Param("fid")
-	comment.UserID = api.Middleware.Uid
-
-	if comment.ID != "" {
-		err = comment.UpdateComment(c.Request().Context(), api.DB)
-		if err != nil {
-			api.Logging.Unsuccessful("creatix.feedback.commentfeedback: not able to update comment", err)
-			return c.JSON(http.StatusBadRequest, web.HttpResponse{Message: "not able to update comment"})
-		}
-	} else {
-		err = comment.CommentFeedback(c.Request().Context(), api.DB, api.Middleware.Uid)
-		if err != nil {
-			api.Logging.Unsuccessful("creatix.feedback.commentfeedback: not able to write comment", err)
-			return c.JSON(http.StatusBadRequest, web.HttpResponse{Message: "not able to write comment"})
-		}
+	if err = api.commentFeedback(*comment, c.Request().Context()); err != nil {
+		api.Logging.Unsuccessful("creatix.feedback.commentfeedback: not able to update comment", err)
+		return c.JSON(http.StatusBadRequest, web.HttpResponse{Message: "not able to write comment"})
 	}
+
 	return c.JSON(http.StatusOK, web.HttpResponse{Message: "ok"})
 }

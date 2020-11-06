@@ -7,6 +7,7 @@ require (
 	github.com/golang-migrate/migrate/v4 v4.12.2
 	github.com/google/uuid v1.1.1
 	github.com/gorilla/mux v1.7.4
+	github.com/gorilla/websocket v1.4.2
 	github.com/jinzhu/gorm v1.9.15
 	github.com/kelseyhightower/envconfig v1.4.0
 	github.com/labstack/echo v3.3.10+incompatible
@@ -16,4 +17,5 @@ require (
 	github.com/sirupsen/logrus v1.6.0
 	github.com/valyala/fasttemplate v1.2.0 // indirect
 	golang.org/x/crypto v0.0.0-20200709230013-948cd5f35899
+	golang.org/x/net v0.0.0-20200707034311-ab3426394381
 )
