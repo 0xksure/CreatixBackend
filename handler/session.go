@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/labstack/echo"
+	"github.com/sendgrid/sendgrid-go"
+	"github.com/sendgrid/sendgrid-go/helpers/mail"
 
 	"github.com/kristohberg/CreatixBackend/config"
 	"github.com/kristohberg/CreatixBackend/utils"
@@ -32,10 +34,16 @@ type LoginRequest struct {
 
 // Handler sets up the session endpoints
 func (s SessionAPI) Handler(e *echo.Group) {
+	e.GET("/health", Health)
 	e.POST("/user/signup", s.Signup)
 	e.POST("/user/login", s.Login)
 	e.POST("/user/refresh", s.Refresh)
 	e.GET("/user/logout", s.Logout)
+	e.POST("/contact-us", s.ContactUs)
+}
+
+func Health(c echo.Context) error {
+	return c.String(http.StatusOK, "I'm up")
 }
 
 // Signup signups the new user
@@ -130,4 +138,38 @@ func (s SessionAPI) Refresh(c echo.Context) error {
 	}
 	c.SetCookie(cookie)
 	return c.JSON(http.StatusOK, "")
+}
+
+type ContactUsContent struct {
+	Email   string `json:"email"`
+	Content string `json:"content"`
+}
+
+// ContactUs handles
+func (s SessionAPI) ContactUs(c echo.Context) error {
+	var contactUsContent ContactUsContent
+	err := c.Bind(&contactUsContent)
+	if err != nil {
+		s.Logging.Unsuccessful("could not parse email contact", err)
+		return c.JSON(http.StatusBadRequest, web.HttpResponse{Message: "not able to bind contact content"})
+	}
+	from := mail.NewEmail("ContactUs", contactUsContent.Email)
+	subject := "creatix: Contact us"
+	to := mail.NewEmail("thecreatix", s.Cfg.ContactEmail)
+	plainTextContent := contactUsContent.Content
+	htmlContent := ""
+	message := mail.NewSingleEmail(from, subject, to, plainTextContent, htmlContent)
+	client := sendgrid.NewSendClient(s.Cfg.SendgridKey)
+	response, err := client.Send(message)
+	if err != nil {
+		s.Logging.Unsuccessful("could not send email", err)
+		return c.JSON(http.StatusInternalServerError, nil)
+	}
+
+	if response.StatusCode > 300 {
+		s.Logging.Unsuccessful(fmt.Sprintf("could not send email: %d", response.StatusCode), nil)
+		return c.JSON(response.StatusCode, nil)
+	}
+	return c.JSON(response.StatusCode, "")
+
 }

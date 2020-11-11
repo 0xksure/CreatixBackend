@@ -20,6 +20,8 @@ type Config struct {
 	SMTPServer                 string `default:""`
 	SMTPPWD                    string `default:""`
 	SMTPUserName               string `default:""`
+	SendgridKey                string `split_words:"true" default:""`
+	ContactEmail               string `split_words:"true" default:""`
 	AllowCookieDomain          string `split_words:"true" default:""`
 	TokenSecret                string `split_words:"true" default:"secretkey"`
 	TokenExpirationTimeMinutes int

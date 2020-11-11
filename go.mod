@@ -14,6 +14,8 @@ require (
 	github.com/labstack/gommon v0.3.0 // indirect
 	github.com/lib/pq v1.8.0
 	github.com/pkg/errors v0.9.1
+	github.com/sendgrid/rest v2.6.2+incompatible // indirect
+	github.com/sendgrid/sendgrid-go v3.7.1+incompatible
 	github.com/sirupsen/logrus v1.6.0
 	github.com/valyala/fasttemplate v1.2.0 // indirect
 	golang.org/x/crypto v0.0.0-20200709230013-948cd5f35899

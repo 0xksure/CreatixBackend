@@ -89,7 +89,7 @@ func (a App) Run() {
 	e := echo.New()
 
 	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-		AllowOrigins:     []string{"http://localhost:3030", "https://thecreatix.herokuapp.com"},
+		AllowOrigins:     []string{"http://localhost:3030", "https://thecreatix.herokuapp.com", "https://thecreatix.io"},
 		AllowHeaders:     []string{"authorization", "Content-Type"},
 		AllowCredentials: true,
 		AllowMethods:     []string{echo.OPTIONS, echo.GET, echo.HEAD, echo.PUT, echo.PATCH, echo.POST, echo.DELETE},
