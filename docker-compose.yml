@@ -10,3 +10,13 @@ services:
       - POSTGRES_DB=db
     ports:
       - "5432:5432"
+  testdb:
+    build: 
+      context: .
+      dockerfile: Dockerfile.db
+    environment:
+      - POSTGRES_USER=db
+      - POSTGRES_PASSWORD=Pwd1
+      - POSTGRES_DB=db
+    ports:
+      - "5400:5432"
