@@ -19,6 +19,7 @@ import (
 	"github.com/labstack/echo/middleware"
 	_ "github.com/lib/pq"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 )
 
 const ioTimeout = time.Second * 3
@@ -98,27 +99,32 @@ func (a App) Run() {
 	if port == "" {
 		port = ":8000"
 	}
-	userSession := &models.UserSession{TokenSecret: a.cfg.TokenSecret}
 	openSubrouter := e.Group("/v0")
 	restAPI := handler.RestAPI{
-		DB:          a.DB,
-		Logging:     a.logger,
-		Cfg:         a.cfg,
-		Feedback:    models.Feedback{},
-		UserSession: userSession,
-		Middleware:  &jwtmiddleware.Middleware{Cfg: a.cfg},
-		CompanyAPI:  models.CompanyAPI{DB: a.DB},
+		DB:            a.DB,
+		Logging:       a.logger,
+		Cfg:           a.cfg,
+		Feedback:      models.Feedback{},
+		Middleware:    &jwtmiddleware.Middleware{Cfg: a.cfg},
+		CompanyClient: models.NewCompanyClient(a.DB),
 	}
 	restAPI.Handler(openSubrouter)
 
 	authSubrouter := e.Group("/v0/auth")
 	sessionAPI := handler.SessionAPI{
-		DB:          a.DB,
-		Logging:     a.logger,
-		Cfg:         a.cfg,
-		UserSession: *userSession,
+		DB:            a.DB,
+		Logging:       a.logger,
+		Cfg:           a.cfg,
+		SessionClient: models.NewSessionClient(a.DB, []byte(a.cfg.TokenSecret), a.cfg.TokenExpirationTimeMinutes, a.logger),
 	}
 	sessionAPI.Handler(authSubrouter)
+
+	publicSubrouter := e.Group("/v0/public")
+	publicAPI := handler.PublicAPI{
+		Cfg:     a.cfg,
+		Logging: logrus.StandardLogger(),
+	}
+	publicAPI.Handler(publicSubrouter)
 
 	// REST API handler
 	log.Fatal(e.Start(port))

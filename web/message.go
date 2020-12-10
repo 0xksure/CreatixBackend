@@ -10,7 +10,7 @@ import (
 
 type HttpResponse struct {
 	Message string
-	User    models.UserSession
+	User    models.SessionUser
 }
 
 func Message(status bool, message string) map[string]interface{} {

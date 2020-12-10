@@ -7,10 +7,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-type CompanyAPI struct {
-	DB *sql.DB
-}
-
 type Company struct {
 	ID   string `json:"id"`
 	Name string `json:"companyName"`
@@ -20,8 +16,67 @@ type Team struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 }
+type CompanyClient interface {
+	// Company
+	CreateCompany(ctx context.Context, company, userId string) (companyID *int64, err error)
+	AddUserToCompanyByEmail(ctx context.Context, companyID, userEmail string) (err error)
+	SearchCompany(ctx context.Context, query string) (queryResult []Company, err error)
+	GetCompaniesAssociatedToUser(ctx context.Context, userID string) (companies []Company, err error)
 
-const AddUserToCompanyQuery = `
+	// Team
+	CreateTeam(ctx context.Context, team Team) (err error)
+	AddUserToTeam(ctx context.Context) error
+}
+
+type companyClient struct {
+	DB *sql.DB
+}
+
+// NewCompanyClient creates a new company client
+func NewCompanyClient(DB *sql.DB) CompanyClient {
+	return companyClient{DB: DB}
+}
+
+const getCompaniesAssociatedToUserQuery = `
+	SELECT 
+	c.Id, 
+	c.Name
+	FROM COMPANY c
+	LEFT JOIN (
+		SELECT CompanyId
+		FROM USER_COMPANY 
+		WHERE UserId=$1
+	) as uc 
+	ON c.Id=uc.CompanyId
+`
+
+func (c companyClient) GetCompaniesAssociatedToUser(ctx context.Context, userID string) (companies []Company, err error) {
+	rows, err := c.DB.QueryContext(ctx, getCompaniesAssociatedToUserQuery, userID)
+	if err != nil {
+		return companies, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var company Company
+		if err = rows.Scan(&company.ID, &company.Name); err != nil {
+			return
+		}
+		companies = append(companies, company)
+	}
+
+	if rows.Close() != nil {
+		return
+	}
+
+	if rows.Err() != nil {
+		return
+	}
+
+	return
+}
+
+const addUserToCompanyByEmailQuery = `
 	with find_user (
 		SELECT * FROM USERS 
 		WHERE Email=$2
@@ -36,20 +91,8 @@ const AddUserToCompanyQuery = `
 `
 
 // AddUser adds a user by email address
-func (c CompanyAPI) AddUser(ctx context.Context, db *sql.DB, companyID, userEmail string) (err error) {
-	tx, err := db.BeginTx(ctx, &sql.TxOptions{})
-	if err != nil {
-		return
-	}
-
-	defer func() {
-		if err != nil {
-			tx.Rollback()
-			return
-		}
-	}()
-
-	res, err := tx.ExecContext(ctx, AddUserToCompanyQuery, companyID, userEmail)
+func (c companyClient) AddUserToCompanyByEmail(ctx context.Context, companyID, userEmail string) (err error) {
+	res, err := c.DB.ExecContext(ctx, addUserToCompanyByEmailQuery, companyID, userEmail)
 	if err != nil {
 		return
 	}
@@ -57,11 +100,6 @@ func (c CompanyAPI) AddUser(ctx context.Context, db *sql.DB, companyID, userEmai
 	nrows, err := res.RowsAffected()
 	if err != nil || nrows == 0 {
 		return errors.New("not able to add user")
-	}
-
-	err = tx.Commit()
-	if err != nil {
-		return
 	}
 	return err
 }
@@ -74,20 +112,8 @@ const searchCompanyQuery = `
 `
 
 // SearchCompany receives a string query and returns a list of company results
-func (c CompanyAPI) SearchCompany(ctx context.Context, db *sql.DB, query string) (queryResult []Company, err error) {
-	tx, err := db.BeginTx(ctx, &sql.TxOptions{})
-	if err != nil {
-		return
-	}
-
-	defer func() {
-		if err != nil {
-			tx.Rollback()
-			return
-		}
-	}()
-
-	rows, err := tx.QueryContext(ctx, searchCompanyQuery, query)
+func (c companyClient) SearchCompany(ctx context.Context, query string) (queryResult []Company, err error) {
+	rows, err := c.DB.QueryContext(ctx, searchCompanyQuery, query)
 	if err != nil {
 		return
 	}
@@ -116,9 +142,14 @@ const createCompanyQuery = `
 	VALUES ($1)
 	RETURNING ID
 `
+const addUserToCompanyByID = `
+	INSERT INTO USER_COMPANY(CompanyId,UserId)
+	VALUES ($1,$2)
+`
 
-func (c Company) CreateCompany(ctx context.Context, db *sql.DB) (companyID int64, err error) {
-	tx, err := db.BeginTx(ctx, &sql.TxOptions{})
+// CreateCompany creates a new company and adds the current user to it
+func (c companyClient) CreateCompany(ctx context.Context, companyName, userID string) (companyID *int64, err error) {
+	tx, err := c.DB.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return
 	}
@@ -130,20 +161,24 @@ func (c Company) CreateCompany(ctx context.Context, db *sql.DB) (companyID int64
 		}
 	}()
 
-	res, err := tx.ExecContext(ctx, createCompanyQuery, c.Name)
+	err = tx.QueryRowContext(ctx, createCompanyQuery, companyName).Scan(&companyID)
 	if err != nil {
 		return
 	}
 
-	companyID, err = res.LastInsertId()
-	if err != nil {
+	if companyID == nil {
 		return
 	}
 
-	err = tx.Commit()
+	res, err := tx.ExecContext(ctx, addUserToCompanyByID, companyID, userID)
 	if err != nil {
 		return
 	}
+	nrows, err := res.RowsAffected()
+	if err != nil || nrows == 0 {
+		return companyID, errors.New("no company added")
+	}
+
 	return companyID, err
 }
 
@@ -152,20 +187,9 @@ const createTeamQuery = `
 	VALUES ($1)
 `
 
-func (c Company) CreateTeam(ctx context.Context, db *sql.DB, team Team) (err error) {
-	tx, err := db.BeginTx(ctx, &sql.TxOptions{})
-	if err != nil {
-		return
-	}
+func (c companyClient) CreateTeam(ctx context.Context, team Team) (err error) {
 
-	defer func() {
-		if err != nil {
-			tx.Rollback()
-			return
-		}
-	}()
-
-	res, err := tx.ExecContext(ctx, createTeamQuery, team.Name)
+	res, err := c.DB.ExecContext(ctx, createTeamQuery, team.Name)
 	if err != nil {
 		return
 	}
@@ -174,19 +198,11 @@ func (c Company) CreateTeam(ctx context.Context, db *sql.DB, team Team) (err err
 		return errors.New("not able to update teams table")
 	}
 
-	err = tx.Commit()
-	if err != nil {
-		return
-	}
-	return nil
-}
-
-func (c Company) AssignPersonToCompany(ctx context.Context, db *sql.DB) error {
 	return nil
 }
 
 // AssignUserToTeam assigns a userID to a teamID as long as that
 // user is a part om the mother company
-func (c Company) AssignPersonToTeam(ctx context.Context, db *sql.DB) error {
+func (c companyClient) AddUserToTeam(ctx context.Context) error {
 	return nil
 }

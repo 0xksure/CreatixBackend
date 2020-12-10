@@ -8,7 +8,7 @@ import (
 	"net/http"
 
 	"github.com/gorilla/websocket"
-	jwtmiddleware "github.com/kristohberg/CreatixBackend/middleware"
+	"github.com/kristohberg/CreatixBackend/middleware"
 	"github.com/kristohberg/CreatixBackend/models"
 	"github.com/kristohberg/CreatixBackend/web"
 	"github.com/labstack/echo"
@@ -18,13 +18,12 @@ import (
 )
 
 type RestAPI struct {
-	DB          *sql.DB
-	Logging     *logging.StandardLogger
-	Cfg         config.Config
-	Feedback    models.Feedback
-	UserSession *models.UserSession
-	Middleware  *jwtmiddleware.Middleware
-	CompanyAPI  models.CompanyAPI
+	DB            *sql.DB
+	Logging       *logging.StandardLogger
+	Cfg           config.Config
+	Feedback      models.Feedback
+	Middleware    *middleware.Middleware
+	CompanyClient models.CompanyClient
 }
 
 func (api RestAPI) Handler(e *echo.Group) {

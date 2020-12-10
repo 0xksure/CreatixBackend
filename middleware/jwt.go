@@ -1,4 +1,4 @@
-package jwtmiddleware
+package middleware
 
 import (
 	"net/http"
@@ -26,7 +26,7 @@ type MiddlewareClaim struct {
 	jwt.StandardClaims
 }
 
-func (m *Middleware) JwtVerify(next echo.HandlerFunc) echo.HandlerFunc {
+func (m Middleware) JwtVerify(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		m.mutex.Lock()
 		defer m.mutex.Unlock()
@@ -50,7 +50,8 @@ func (m *Middleware) JwtVerify(next echo.HandlerFunc) echo.HandlerFunc {
 		expiresAt := time.Now().Add(time.Minute * time.Duration(m.Cfg.TokenExpirationTimeMinutes))
 		cookie.Expires = expiresAt
 		c.SetCookie(cookie)
-		m.Uid = claims.UserID
+		c.Set(utils.UserIDContext.String(), claims.UserID)
+
 		return next(c)
 	}
 }
