@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/kristohberg/CreatixBackend/models"
@@ -12,14 +11,14 @@ import (
 
 // CreateCompany creates a new company
 func (api RestAPI) CreateCompany(c echo.Context) (err error) {
-	fmt.Println("create company:", c.Get(utils.UserIDContext.String()))
 	userID, err := utils.GetUserIDFromContext(c)
 	if err != nil {
-		return
+		api.Logging.Unsuccessful("creatix.feedback.createCompany: could not get user", err)
+		return c.JSON(http.StatusBadRequest, web.HttpResponse{Message: "no userID"})
 	}
-
 	var company models.Company
 	if err = c.Bind(&company); err != nil {
+		api.Logging.Unsuccessful("creatix.feedback.createCompany: could not bind company", err)
 		return c.JSON(http.StatusBadRequest, web.HttpResponse{Message: "invalid body"})
 	}
 

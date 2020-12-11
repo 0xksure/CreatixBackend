@@ -5,6 +5,4 @@ CREATE TABLE USERS
   Lastname varchar(64) NOT NULL,
   Email varchar(64) NOT NULL UNIQUE,
   Password varchar(64) NOT NULL
-
-
 );

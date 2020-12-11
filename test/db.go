@@ -1,7 +1,9 @@
 package test
 
 import (
+	"context"
 	"database/sql"
+	"fmt"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
@@ -35,12 +37,37 @@ func NewTestDB() (*sql.DB, error) {
 	return db, nil
 }
 
+func TestMigrations(db *sql.DB) error {
+	m, err := migrate.New("file://../testsql", dbURL)
+	if err != nil {
+		return errors.WithStack(err)
+	}
+
+	if err = m.Up(); err != nil && err != migrate.ErrNoChange {
+		return errors.WithStack(err)
+	}
+	return nil
+}
+
 const emptyQuery = `
 	DROP SCHEMA public CASCADE;
 	CREATE SCHEMA public;
 `
 
-func EmptyTestDB(db *sql.DB) error {
-	db.Exec(emptyQuery)
-	return nil
+func EmptyTestDB(db *sql.DB) {
+	ctx := context.Background()
+	res, err := db.ExecContext(ctx, emptyQuery)
+	if err != nil {
+		fmt.Println("error ", err.Error())
+	}
+
+	nrows, err := res.RowsAffected()
+	if err != nil {
+		fmt.Println("error ", err.Error())
+	}
+
+	if nrows == 0 {
+		fmt.Println("no rows affected when emptying db")
+	}
+	return
 }

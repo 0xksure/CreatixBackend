@@ -22,15 +22,9 @@ func InitConfig() config.Config {
 	return config.Config{Env: "test"}
 }
 
-func SignupAndLoginUser(t *testing.T, e *echo.Echo, db *sql.DB, logger *logging.StandardLogger) (cookie string) {
+func SignupAndLoginUser(t *testing.T, e *echo.Echo, sessionAPI SessionAPI, logger *logging.StandardLogger) (cookie string) {
 	var c echo.Context
 	var rec *httptest.ResponseRecorder
-	sessionAPI := SessionAPI{
-		DB:            db,
-		Logging:       logger,
-		Cfg:           InitConfig(),
-		SessionClient: models.NewSessionClient(db, []byte("secret"), 20, logger),
-	}
 
 	mockUser := newUser()
 	signupLoad := models.Signup{User: mockUser, Company: newCompany()}
@@ -46,7 +40,7 @@ func SignupAndLoginUser(t *testing.T, e *echo.Echo, db *sql.DB, logger *logging.
 	require.NoError(t, err)
 	c, rec = newContext(e, loginRequestByte)
 	err = sessionAPI.Login(c)
-	require.NoError(t, res)
+	require.NoError(t, err)
 
 	// get cookie
 
@@ -72,24 +66,23 @@ func TestCompany(t *testing.T) {
 	e := echo.New()
 
 	db, err := test.NewTestDB()
+	require.NoError(t, err)
+	err = test.TestMigrations(db)
+	require.NoError(t, err)
 	defer test.EmptyTestDB(db)
 
+	// Create user
 	logger := logging.NewLogger()
-
-	require.NoError(t, err)
-
-	cookie := SignupAndLoginUser(t, e, db, logger)
 	restAPI := NewRestAPI(db, logger)
 
 	// Create new company
-	t.Log("Create new company")
 	companyJSON, err := json.Marshal(newCompany())
 	require.NoError(t, err)
 	c, rec = newContext(e, companyJSON)
-	c.Set("cookie", cookie)
 	c.Set(utils.UserIDContext.String(), "1")
-	res := restAPI.CreateCompany(c)
-	if assert.NoError(t, res) {
+	err = restAPI.CreateCompany(c)
+	if assert.NoError(t, err) {
 		assert.Equal(t, http.StatusOK, rec.Code)
 	}
+
 }

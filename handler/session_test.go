@@ -57,9 +57,9 @@ func TestSession(t *testing.T) {
 	e := echo.New()
 
 	db, err := test.NewTestDB()
+	require.NoError(t, err)
 	defer test.EmptyTestDB(db)
 
-	require.NoError(t, err)
 	logger := logging.NewLogger()
 	sessionAPI := SessionAPI{
 		DB:            db,
