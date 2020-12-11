@@ -30,6 +30,11 @@ func (api RestAPI) CreateCompany(c echo.Context) (err error) {
 	return c.JSON(http.StatusOK, web.HttpResponse{Message: "created company"})
 }
 
+func (api RestAPI) AddUsersToCompany(c echo.Context) (err error) {
+	companyID := c.Param("company")
+	return c.String(http.StatusOK, companyID)
+}
+
 func (api RestAPI) SearchCompany(c echo.Context) (err error) {
 	query := c.Param("query")
 	searchResult, err := api.CompanyClient.SearchCompany(c.Request().Context(), query)

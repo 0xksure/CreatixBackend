@@ -4,12 +4,17 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"io/ioutil"
+	"os"
+	"path/filepath"
+	"testing"
 
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	_ "github.com/lib/pq"
 	"github.com/pkg/errors"
+	"github.com/stretchr/testify/require"
 )
 
 const dbURL = "postgres://localhost:5400/db?user=db&password=Pwd1&sslmode=disable"
@@ -38,13 +43,52 @@ func NewTestDB() (*sql.DB, error) {
 }
 
 func TestMigrations(db *sql.DB) error {
-	m, err := migrate.New("file://../testsql", dbURL)
+	wd, err := os.Getwd()
 	if err != nil {
-		return errors.WithStack(err)
+		return err
+	}
+	parent := filepath.Dir(wd)
+
+	testsqlDir := fmt.Sprintf("/%s/%s", parent, "test/testsql")
+	fmt.Println("testsqldir: ", testsqlDir)
+	ctx := context.Background()
+	tx, err := db.BeginTx(ctx, &sql.TxOptions{})
+	if err != nil {
+		return err
 	}
 
-	if err = m.Up(); err != nil && err != migrate.ErrNoChange {
-		return errors.WithStack(err)
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+			return
+		}
+	}()
+
+	mFiles, err := ioutil.ReadDir(testsqlDir)
+	if err != nil {
+		return err
+	}
+
+	for _, mFile := range mFiles {
+		content, err := ioutil.ReadFile(fmt.Sprintf("%s/%s", testsqlDir, mFile.Name()))
+		if err != nil {
+			return err
+		}
+		res, err := tx.ExecContext(ctx, string(content))
+		if err != nil {
+			return err
+		}
+		nrows, err := res.RowsAffected()
+		if err != nil {
+			return err
+		}
+		if nrows == 0 {
+			return errors.New("no rows affected")
+		}
+	}
+
+	if err = tx.Commit(); err != nil {
+		return err
 	}
 	return nil
 }
@@ -54,20 +98,14 @@ const emptyQuery = `
 	CREATE SCHEMA public;
 `
 
-func EmptyTestDB(db *sql.DB) {
-	ctx := context.Background()
-	res, err := db.ExecContext(ctx, emptyQuery)
-	if err != nil {
-		fmt.Println("error ", err.Error())
-	}
+func EmptyTestDB(t *testing.T, db *sql.DB) {
+	t.Log("Empty db")
+	defer db.Close()
+	res, err := db.Exec(emptyQuery)
+	require.NoError(t, err, "not able to empty db")
 
 	nrows, err := res.RowsAffected()
-	if err != nil {
-		fmt.Println("error ", err.Error())
-	}
+	require.NoError(t, err, "not able to empty db")
+	require.NotEqual(t, 0, nrows)
 
-	if nrows == 0 {
-		fmt.Println("no rows affected when emptying db")
-	}
-	return
 }

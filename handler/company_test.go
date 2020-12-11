@@ -69,7 +69,7 @@ func TestCompany(t *testing.T) {
 	require.NoError(t, err)
 	err = test.TestMigrations(db)
 	require.NoError(t, err)
-	defer test.EmptyTestDB(db)
+	defer test.EmptyTestDB(t, db)
 
 	// Create user
 	logger := logging.NewLogger()

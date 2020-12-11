@@ -179,6 +179,10 @@ func (c companyClient) CreateCompany(ctx context.Context, companyName, userID st
 		return companyID, errors.New("no company added")
 	}
 
+	if err = tx.Commit(); err != nil {
+		return companyID, err
+	}
+
 	return companyID, err
 }
 
