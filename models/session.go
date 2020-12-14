@@ -39,18 +39,17 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
-type SessionUser struct {
-	ID        string `json:"id"`
-	Firstname string `json:"firstname"`
-	Lastname  string `json:"lastname"`
-	Email     string `json:"email"`
-}
 type User struct {
 	ID        string `json:"id"`
 	Firstname string `json:"firstname"`
 	Lastname  string `json:"lastname"`
+	Username  string `json:"username"`
 	Email     string `json:"email"`
 	Password  string `json:"password"`
+}
+
+type AddUser struct {
+	Email string `json:"email"`
 }
 type Signup struct {
 	User
@@ -83,6 +82,9 @@ func (s Signup) Valid() error {
 		errs["lastName"] = "lastname cannot be empty"
 	}
 
+	if s.User.Username == "" {
+		errs["username"] = "username cannot be empty"
+	}
 	if s.User.Email == "" {
 		errs["email"] = "email cannot be empty"
 	}
@@ -94,11 +96,11 @@ func (s Signup) Valid() error {
 }
 
 type Response struct {
-	Status      bool        `json:"status"`
-	Message     string      `json:"message"`
-	Token       string      `json:"token"`
-	ExpiresAt   time.Time   `json:"expiresAt"`
-	SessionUser SessionUser `json:"sessionUser"`
+	Status      bool              `json:"status"`
+	Message     string            `json:"message"`
+	Token       string            `json:"token"`
+	ExpiresAt   time.Time         `json:"expiresAt"`
+	SessionUser utils.SessionUser `json:"sessionUser"`
 }
 
 // NewToken creates a new token with a default claim
@@ -126,7 +128,7 @@ func (c sessionClient) newToken(expiresAt time.Time, userID string) (string, err
 // LoginUser checks if the user given password and username exists
 // if it does
 func (c sessionClient) LoginUser(ctx context.Context, loginRequest *LoginRequest) (resp Response, err error) {
-	existingUser, err := c.findUserByEmail(ctx, loginRequest.Email)
+	existingUser, err := utils.FindUserByEmail(ctx, c.DB, loginRequest.Email)
 	if err != nil {
 		c.logger.Unsuccessful("could not find user", err)
 		return
@@ -184,8 +186,8 @@ values ((SELECT Id from new_company),(SELECT ID FROM new_user))
 `
 
 var createUserQuery = `
-	INSERT INTO users(firstname,lastname,email,password)
-	VALUES ($1,$2,$3,$4)
+	INSERT INTO users(firstname,lastname,username,email,password)
+	VALUES ($1,$2,$3,$4,$5)
 `
 
 // CreateUser creates a new user in the database
@@ -195,7 +197,7 @@ func (c sessionClient) CreateUser(ctx context.Context, signup Signup) error {
 		return err
 	}
 
-	res, err := c.DB.ExecContext(ctx, createUserQuery, signup.Firstname, signup.Lastname, signup.Email, hashedPassword)
+	res, err := c.DB.ExecContext(ctx, createUserQuery, signup.Firstname, signup.Lastname, signup.Username, signup.Email, hashedPassword)
 	if err != nil {
 		return err
 	}
@@ -210,25 +212,6 @@ func (c sessionClient) CreateUser(ctx context.Context, signup Signup) error {
 	}
 
 	return nil
-}
-
-var findUserByEmailQuery = `
-	SELECT 
-	ID
-	,Firstname
-	,Lastname
-	,Email
-	FROM users
-	WHERE Email = $1
-`
-
-// findUserByEmail returns the first row with the given email
-func (c sessionClient) findUserByEmail(ctx context.Context, email string) (user SessionUser, err error) {
-	err = c.DB.QueryRowContext(ctx, findUserByEmailQuery, email).Scan(&user.ID, &user.Firstname, &user.Lastname, &user.Email)
-	if err != nil {
-		return user, err
-	}
-	return user, nil
 }
 
 var findUserPasswordByEmailQuery = `

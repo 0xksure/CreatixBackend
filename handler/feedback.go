@@ -36,6 +36,7 @@ func (api RestAPI) Handler(e *echo.Group) {
 	e.POST("/user/feedback/:fid/comment", api.CommentFeedback)
 	e.GET("/company/search/{query}", api.SearchCompany)
 	e.POST("/company/create", api.CreateCompany)
+	e.POST("/company/:company/adduser", api.AddUserToCompany)
 	e.GET("/ws/feedback", api.FeedbackWebSocket)
 }
 

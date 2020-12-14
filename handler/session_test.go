@@ -11,13 +11,14 @@ import (
 	"github.com/kristohberg/CreatixBackend/logging"
 	"github.com/kristohberg/CreatixBackend/models"
 	"github.com/kristohberg/CreatixBackend/test"
+	"github.com/kristohberg/CreatixBackend/utils"
 	"github.com/labstack/echo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-func newContext(e *echo.Echo, data []byte) (echo.Context, *httptest.ResponseRecorder) {
-	req := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(string(data)))
+func newContext(e *echo.Echo, data []byte, path string) (echo.Context, *httptest.ResponseRecorder) {
+	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(string(data)))
 	req.Header.Set(echo.HeaderContentType, echo.MIMEApplicationJSON)
 	rec := httptest.NewRecorder()
 	return e.NewContext(req, rec), rec
@@ -25,15 +26,15 @@ func newContext(e *echo.Echo, data []byte) (echo.Context, *httptest.ResponseReco
 }
 
 func newUser() models.User {
-	return models.User{ID: "1", Firstname: "Kris", Lastname: "Berg", Email: "ok@ok.com", Password: "olol"}
+	return models.User{ID: "1", Firstname: "Kris", Lastname: "Berg", Username: "kristohb", Email: "ok@ok.com", Password: "olol"}
 }
 
 func newCompany() models.Company {
 	return models.Company{Name: "coolio"}
 }
 
-func newSessionUser(user models.User) models.SessionUser {
-	return models.SessionUser{ID: user.ID, Firstname: user.Firstname, Lastname: user.Lastname, Email: user.Email}
+func newSessionUser(user models.User) utils.SessionUser {
+	return utils.SessionUser{ID: user.ID, Firstname: user.Firstname, Lastname: user.Lastname, Email: user.Email}
 }
 
 func newLoginRequest(user models.User) models.LoginRequest {
@@ -74,7 +75,7 @@ func TestSession(t *testing.T) {
 		Company: newCompany()}
 	signupJSON, err := json.Marshal(signupLoad)
 	require.NoError(t, err)
-	c, rec = newContext(e, signupJSON)
+	c, rec = newContext(e, signupJSON, "/")
 	res := sessionAPI.Signup(c)
 	if assert.NoError(t, res) {
 		assert.Equal(t, http.StatusOK, rec.Code)
@@ -82,7 +83,7 @@ func TestSession(t *testing.T) {
 	}
 
 	// Try to signup the same user again
-	c, rec = newContext(e, signupJSON)
+	c, rec = newContext(e, signupJSON, "/")
 	res = sessionAPI.Signup(c)
 
 	if assert.NoError(t, res) {
@@ -94,7 +95,7 @@ func TestSession(t *testing.T) {
 	loginRequest := models.LoginRequest{Email: "ok@ok.com", Password: "olol"}
 	loginRequestByte, err := json.Marshal(loginRequest)
 	require.NoError(t, err)
-	c, rec = newContext(e, loginRequestByte)
+	c, rec = newContext(e, loginRequestByte, "/")
 	err = sessionAPI.Login(c)
 
 	require.NoError(t, err)
@@ -106,7 +107,7 @@ func TestSession(t *testing.T) {
 
 	// Try to refresh cookie
 	t.Log("Test to refresh cookie")
-	c, rec = newContext(e, nil)
+	c, rec = newContext(e, nil, "/")
 	c.Set("cookie", cookie)
 	err = sessionAPI.Refresh(c)
 	if assert.NoError(t, err) {
@@ -119,7 +120,7 @@ func TestSession(t *testing.T) {
 	loginRequest = models.LoginRequest{Email: "ok2@ok.com", Password: "olol"}
 	loginRequestByte, err = json.Marshal(loginRequest)
 	require.NoError(t, err)
-	c, rec = newContext(e, loginRequestByte)
+	c, rec = newContext(e, loginRequestByte, "/")
 	err = sessionAPI.Login(c)
 
 	require.NoError(t, err)
@@ -129,7 +130,7 @@ func TestSession(t *testing.T) {
 
 	// Try to logout
 	t.Log("Test to logout cookie")
-	c, rec = newContext(e, nil)
+	c, rec = newContext(e, nil, "/")
 	c.Set("cookie", cookie)
 	err = sessionAPI.Logout(c)
 	if assert.NoError(t, err) {
@@ -140,7 +141,7 @@ func TestSession(t *testing.T) {
 
 	// Try to refresh without cookie
 	t.Log("Try to refresh without cookie")
-	c, rec = newContext(e, nil)
+	c, rec = newContext(e, nil, "/")
 	err = sessionAPI.Refresh(c)
 	if assert.NoError(t, err) {
 		assert.Equal(t, http.StatusBadRequest, rec.Code)

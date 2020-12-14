@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/kristohberg/CreatixBackend/models"
@@ -30,8 +31,24 @@ func (api RestAPI) CreateCompany(c echo.Context) (err error) {
 	return c.JSON(http.StatusOK, web.HttpResponse{Message: "created company"})
 }
 
-func (api RestAPI) AddUsersToCompany(c echo.Context) (err error) {
+func (api RestAPI) AddUserToCompany(c echo.Context) (err error) {
 	companyID := c.Param("company")
+	if companyID == "" {
+		api.Logging.Unsuccessful("no company provided ", nil)
+		return c.String(http.StatusBadRequest, "")
+	}
+	newUser := new(models.AddUser)
+	err = c.Bind(newUser)
+	if err != nil {
+		api.Logging.Unsuccessful("could not bind user", err)
+		return c.String(http.StatusBadRequest, "")
+	}
+	fmt.Println("User id: ", newUser)
+	err = api.CompanyClient.AddUserToCompanyByEmail(c.Request().Context(), companyID, newUser.Email)
+	if err != nil {
+		api.Logging.Unsuccessful("could not add user", err)
+		return c.String(http.StatusBadRequest, "")
+	}
 	return c.String(http.StatusOK, companyID)
 }
 

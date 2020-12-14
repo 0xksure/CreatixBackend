@@ -3,7 +3,9 @@ package models
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
+	"github.com/kristohberg/CreatixBackend/utils"
 	"github.com/pkg/errors"
 )
 
@@ -77,22 +79,19 @@ func (c companyClient) GetCompaniesAssociatedToUser(ctx context.Context, userID 
 }
 
 const addUserToCompanyByEmailQuery = `
-	with find_user (
-		SELECT * FROM USERS 
-		WHERE Email=$2
-	)	
-
 	INSERT INTO USER_COMPANY(CompanyId,UserId)
-	SELECT $1,Id
-	FROM USERS 
-	WHERE EXISTS (
-		SELECT ID FROM USERS WHERE Email=$2
-	) AND Email=$2
+	VALUES ($1,$2)
 `
 
 // AddUser adds a user by email address
 func (c companyClient) AddUserToCompanyByEmail(ctx context.Context, companyID, userEmail string) (err error) {
-	res, err := c.DB.ExecContext(ctx, addUserToCompanyByEmailQuery, companyID, userEmail)
+
+	user, err := utils.FindUserByEmail(ctx, c.DB, userEmail)
+	if err != nil {
+		return
+	}
+
+	res, err := c.DB.ExecContext(ctx, addUserToCompanyByEmailQuery, companyID, user.ID)
 	if err != nil {
 		return
 	}
@@ -101,7 +100,8 @@ func (c companyClient) AddUserToCompanyByEmail(ctx context.Context, companyID, u
 	if err != nil || nrows == 0 {
 		return errors.New("not able to add user")
 	}
-	return err
+	fmt.Println("Number of rows affected: ", nrows)
+	return nil
 }
 
 const searchCompanyQuery = `

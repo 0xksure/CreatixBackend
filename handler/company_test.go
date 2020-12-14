@@ -30,7 +30,7 @@ func SignupAndLoginUser(t *testing.T, e *echo.Echo, sessionAPI SessionAPI, logge
 	signupLoad := models.Signup{User: mockUser, Company: newCompany()}
 	signupJSON, err := json.Marshal(signupLoad)
 	require.NoError(t, err)
-	c, rec = newContext(e, signupJSON)
+	c, rec = newContext(e, signupJSON, "")
 	// SIGNUP USER
 	res := sessionAPI.Signup(c)
 	require.NoError(t, res)
@@ -38,7 +38,7 @@ func SignupAndLoginUser(t *testing.T, e *echo.Echo, sessionAPI SessionAPI, logge
 	// Login user
 	loginRequestByte, err := json.Marshal(newLoginRequest(mockUser))
 	require.NoError(t, err)
-	c, rec = newContext(e, loginRequestByte)
+	c, rec = newContext(e, loginRequestByte, "")
 	err = sessionAPI.Login(c)
 	require.NoError(t, err)
 
@@ -78,11 +78,34 @@ func TestCompany(t *testing.T) {
 	// Create new company
 	companyJSON, err := json.Marshal(newCompany())
 	require.NoError(t, err)
-	c, rec = newContext(e, companyJSON)
+	c, rec = newContext(e, companyJSON, "/company/create")
 	c.Set(utils.UserIDContext.String(), "1")
 	err = restAPI.CreateCompany(c)
 	if assert.NoError(t, err) {
 		assert.Equal(t, http.StatusOK, rec.Code)
 	}
 
+	// Add New user
+	newUserLoad, err := json.Marshal(models.AddUser{Email: "john@doe.no"})
+	require.NoError(t, err)
+	c, rec = newContext(e, newUserLoad, "/company/1/adduser/")
+	c.SetPath("/company/:company/adduser")
+	c.SetParamNames("company")
+	c.SetParamValues("1")
+	c.Set(utils.UserIDContext.String(), "1")
+	err = restAPI.AddUserToCompany(c)
+	if assert.NoError(t, err) {
+		assert.Equal(t, http.StatusOK, rec.Code)
+	}
+
+	// Try to add the same user again
+	c, rec = newContext(e, newUserLoad, "/company/1/adduser/")
+	c.SetPath("/company/:company/adduser")
+	c.SetParamNames("company")
+	c.SetParamValues("1")
+	c.Set(utils.UserIDContext.String(), "1")
+	err = restAPI.AddUserToCompany(c)
+	if assert.NoError(t, err) {
+		assert.Equal(t, http.StatusBadRequest, rec.Code)
+	}
 }
