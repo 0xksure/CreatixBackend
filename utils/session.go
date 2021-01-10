@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
+	"github.com/labstack/echo"
 	"github.com/pkg/errors"
 )
 
@@ -50,4 +51,12 @@ func IsTokenValid(tokenString string, secret []byte) error {
 	}
 
 	return nil
+}
+
+func GetUserIDString(ctx echo.Context) (userID string, err error) {
+	userID = ctx.Get(UserIDContext.String()).(string)
+	if userID == "" {
+		return "", errors.WithStack(errors.New("could not get user id"))
+	}
+	return
 }

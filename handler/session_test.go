@@ -25,8 +25,16 @@ func newContext(e *echo.Echo, data []byte, path string) (echo.Context, *httptest
 
 }
 
-func newUser() models.User {
+func NewSignupUser(firstName, lastName, userName, email, pwd string) models.User {
 	return models.User{ID: "1", Firstname: "Kris", Lastname: "Berg", Username: "kristohb", Email: "ok@ok.com", Password: "olol"}
+}
+
+func NewSignupUserByte(irstName, lastName, userName, email, pwd string) (signup []byte, err error) {
+	return json.Marshal(models.Signup{User: NewSignupUser(irstName, lastName, userName, email, pwd)})
+}
+
+func NewMockUserBytes(email string, access models.AccessLevel) (user []byte, err error) {
+	return json.Marshal(models.AddUser{email, access})
 }
 
 func newCompany() models.Company {
@@ -70,12 +78,9 @@ func TestSession(t *testing.T) {
 	}
 
 	// Signup user
-	mockUser := newUser()
-	signupLoad := models.Signup{User: mockUser,
-		Company: newCompany()}
-	signupJSON, err := json.Marshal(signupLoad)
+	signupLoad, err := NewSignupUserByte("john", "doe", "johndoe1", "john@doe.com", "lol")
 	require.NoError(t, err)
-	c, rec = newContext(e, signupJSON, "/")
+	c, rec = newContext(e, signupLoad, "/")
 	res := sessionAPI.Signup(c)
 	if assert.NoError(t, res) {
 		assert.Equal(t, http.StatusOK, rec.Code)
@@ -83,9 +88,8 @@ func TestSession(t *testing.T) {
 	}
 
 	// Try to signup the same user again
-	c, rec = newContext(e, signupJSON, "/")
+	c, rec = newContext(e, signupLoad, "/")
 	res = sessionAPI.Signup(c)
-
 	if assert.NoError(t, res) {
 		assert.Equal(t, http.StatusBadRequest, rec.Code)
 		assert.Equal(t, string("could not create user"), rec.Body.String())
@@ -101,7 +105,7 @@ func TestSession(t *testing.T) {
 	require.NoError(t, err)
 	if assert.NoError(t, err) {
 		assert.Equal(t, http.StatusOK, rec.Code)
-		assertStruct(t, rec, newSessionUser(mockUser))
+		assertStruct(t, rec, newSessionUser(NewSignupUser("john", "doe", "johndoe1", "john@doe.com", "lol")))
 	}
 	cookie := rec.Header().Get("Set-Cookie")
 

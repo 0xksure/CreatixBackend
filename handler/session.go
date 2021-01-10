@@ -20,12 +20,16 @@ type SessionAPI struct {
 	DB            *sql.DB
 	Logging       *logging.StandardLogger
 	Cfg           config.Config
-	SessionClient models.SessionClient
+	SessionClient *models.SessionClient
 }
+
+var (
+	POSTSignupNewUserPath = "/user/signup"
+)
 
 // Handler sets up the session endpoints
 func (s SessionAPI) Handler(e *echo.Group) {
-	e.POST("/user/signup", s.Signup)
+	e.POST(POSTSignupNewUserPath, s.Signup)
 	e.POST("/user/login", s.Login)
 	e.POST("/user/refresh", s.Refresh)
 	e.GET("/user/logout", s.Logout)

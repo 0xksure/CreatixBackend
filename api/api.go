@@ -12,6 +12,7 @@ import (
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/kristohberg/CreatixBackend/config"
 	"github.com/kristohberg/CreatixBackend/handler"
+	"github.com/kristohberg/CreatixBackend/internal/mail"
 	"github.com/kristohberg/CreatixBackend/logging"
 	jwtmiddleware "github.com/kristohberg/CreatixBackend/middleware"
 	"github.com/kristohberg/CreatixBackend/models"
@@ -95,18 +96,25 @@ func (a App) Run() {
 		AllowCredentials: true,
 		AllowMethods:     []string{echo.OPTIONS, echo.GET, echo.HEAD, echo.PUT, echo.PATCH, echo.POST, echo.DELETE},
 	}))
+	e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
+		Format: "method=${method}, uri=${uri}, status=${status}\n",
+	}))
+
 	port := fmt.Sprintf(":%s", a.cfg.Port)
 	if port == "" {
 		port = ":8000"
 	}
+	sessionClient := models.NewSessionClient(a.DB, []byte(a.cfg.TokenSecret), a.cfg.TokenExpirationTimeMinutes, a.logger)
 	openSubrouter := e.Group("/v0")
 	restAPI := handler.RestAPI{
-		DB:            a.DB,
-		Logging:       a.logger,
-		Cfg:           a.cfg,
-		Feedback:      models.Feedback{},
-		Middleware:    &jwtmiddleware.Middleware{Cfg: a.cfg},
-		CompanyClient: models.NewCompanyClient(a.DB),
+		DB:             a.DB,
+		Logging:        a.logger,
+		Cfg:            a.cfg,
+		Feedback:       models.Feedback{},
+		Middleware:     &jwtmiddleware.Middleware{Cfg: a.cfg},
+		CompanyClient:  models.NewCompanyClient(a.DB),
+		SessionClient:  sessionClient,
+		FeedbackClient: models.NewFeedbackClient(a.DB),
 	}
 	restAPI.Handler(openSubrouter)
 
@@ -115,14 +123,15 @@ func (a App) Run() {
 		DB:            a.DB,
 		Logging:       a.logger,
 		Cfg:           a.cfg,
-		SessionClient: models.NewSessionClient(a.DB, []byte(a.cfg.TokenSecret), a.cfg.TokenExpirationTimeMinutes, a.logger),
+		SessionClient: sessionClient,
 	}
 	sessionAPI.Handler(authSubrouter)
 
 	publicSubrouter := e.Group("/v0/public")
 	publicAPI := handler.PublicAPI{
-		Cfg:     a.cfg,
-		Logging: logrus.StandardLogger(),
+		Cfg:        a.cfg,
+		Logging:    logrus.StandardLogger(),
+		MailClient: mail.NewMailClient(a.cfg.SendgridKey),
 	}
 	publicAPI.Handler(publicSubrouter)
 

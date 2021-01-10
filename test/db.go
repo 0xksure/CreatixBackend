@@ -12,6 +12,7 @@ import (
 	"github.com/golang-migrate/migrate/v4"
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/labstack/gommon/log"
 	_ "github.com/lib/pq"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/require"
@@ -34,9 +35,18 @@ func NewTestDB() (*sql.DB, error) {
 	if err != nil {
 		return nil, errors.WithStack(err)
 	}
-
-	if err = m.Up(); err != nil && err != migrate.ErrNoChange {
+	err = m.Up()
+	dirtyErr, ok := err.(migrate.ErrDirty)
+	if err != nil && err != migrate.ErrNoChange && err != migrate.ErrNilVersion && err != migrate.ErrLocked && !ok {
 		return nil, errors.WithStack(err)
+	}
+	if ok {
+		log.Error("Migration is dirty, forcing rollback and retrying")
+		m.Force(dirtyErr.Version - 1)
+		err = m.Up()
+		if err != nil && err != migrate.ErrNoChange && err != migrate.ErrNilVersion && err != migrate.ErrLocked {
+			panic(fmt.Sprintf("Error occurred running migrations: %v", err))
+		}
 	}
 
 	return db, nil
@@ -45,7 +55,7 @@ func NewTestDB() (*sql.DB, error) {
 func TestMigrations(db *sql.DB) error {
 	wd, err := os.Getwd()
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	parent := filepath.Dir(wd)
 
@@ -54,7 +64,7 @@ func TestMigrations(db *sql.DB) error {
 	ctx := context.Background()
 	tx, err := db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	defer func() {
@@ -66,29 +76,29 @@ func TestMigrations(db *sql.DB) error {
 
 	mFiles, err := ioutil.ReadDir(testsqlDir)
 	if err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 
 	for _, mFile := range mFiles {
 		content, err := ioutil.ReadFile(fmt.Sprintf("%s/%s", testsqlDir, mFile.Name()))
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		res, err := tx.ExecContext(ctx, string(content))
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		nrows, err := res.RowsAffected()
 		if err != nil {
-			return err
+			return errors.WithStack(err)
 		}
 		if nrows == 0 {
-			return errors.New("no rows affected")
+			return errors.WithStack(errors.New("no rows affected"))
 		}
 	}
 
 	if err = tx.Commit(); err != nil {
-		return err
+		return errors.WithStack(err)
 	}
 	return nil
 }
