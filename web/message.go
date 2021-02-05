@@ -5,12 +5,12 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/kristohberg/CreatixBackend/models"
+	"github.com/kristohberg/CreatixBackend/utils"
 )
 
 type HttpResponse struct {
 	Message string
-	User    models.UserSession
+	User    utils.SessionUser
 }
 
 func Message(status bool, message string) map[string]interface{} {

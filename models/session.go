@@ -3,65 +3,204 @@ package models
 import (
 	"context"
 	"database/sql"
-	"errors"
+	"fmt"
 	"time"
 
+	"github.com/dgrijalva/jwt-go"
+	"github.com/kristohberg/CreatixBackend/logging"
 	"github.com/kristohberg/CreatixBackend/utils"
+	"github.com/labstack/echo"
 	_ "github.com/lib/pq"
+	"github.com/pkg/errors"
 	"golang.org/x/crypto/bcrypt"
 )
 
 //
 
-type Timestamp time.Time
+type SessionClienter interface {
+	CreateUser(ctx context.Context, signup Signup) error
+	LoginUser(ctx context.Context, loginRequest *LoginRequest) (SessionResponse, error)
+}
 
-func (t *Timestamp) UnmarshalParam(src string) error {
-	ts, err := time.Parse(time.RFC3339, src)
-	*t = Timestamp(ts)
-	return err
+type SessionClient struct {
+	DB                  *sql.DB
+	TokenSecret         []byte
+	TokenExpirationTime int
+	logger              *logging.StandardLogger
+	CompanyClient       CompanyClienter
+}
+
+// NewSessionClient creates new session client
+func NewSessionClient(DB *sql.DB, tokenSecret []byte, tokenExpirationTime int, logger *logging.StandardLogger) *SessionClient {
+	companyClient := NewCompanyClient(DB)
+	return &SessionClient{DB: DB, TokenSecret: tokenSecret, TokenExpirationTime: tokenExpirationTime, logger: logger, CompanyClient: companyClient}
+}
+
+// LoginRequest contains the login credentials
+type LoginRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
 }
 
 type User struct {
 	ID        string `json:"id"`
 	Firstname string `json:"firstname"`
 	Lastname  string `json:"lastname"`
+	Username  string `json:"username"`
 	Email     string `json:"email"`
 	Password  string `json:"password"`
 }
+
 type Signup struct {
 	User
-	Company
 }
 
-type UserSession struct {
-	ID          string
-	TokenSecret string
+type FieldErrors map[string]string
+
+func (fe FieldErrors) Error() string {
+	var fieldErrorString string
+	for key, val := range fe {
+		fieldErrorString += fmt.Sprintf("key: %s, val: %s", key, val)
+	}
+	return fieldErrorString
+
 }
 
-func (u UserSession) Valid() error {
+func (s Signup) Valid() error {
+
+	errs := make(FieldErrors)
+
+	if s.User.Firstname == "" {
+		errs["firstName"] = "firstname cannot be empty"
+	}
+
+	if s.User.Lastname == "" {
+		errs["lastName"] = "lastname cannot be empty"
+	}
+
+	if s.User.Username == "" {
+		errs["username"] = "username cannot be empty"
+	}
+	if s.User.Email == "" {
+		errs["email"] = "email cannot be empty"
+	}
+
+	if len(errs) > 0 {
+		return errs
+	}
 	return nil
 }
 
-type PasswordRequest struct {
-	Email string
+type UserSessionData struct {
+	SessionUser utils.SessionUser `json:"user"`
+	Companies   []Company         `json:"companies"`
+}
+type SessionResponse struct {
+	Status      bool      `json:"status"`
+	Message     string    `json:"message"`
+	Token       string    `json:"token"`
+	ExpiresAt   time.Time `json:"expiresAt"`
+	UserSession UserSessionData
 }
 
-type PasswordChangeRequest struct {
-	ReqID  string
-	UserID string
+// NewToken creates a new token with a default claim
+func (c *SessionClient) newToken(expiresAt time.Time, userID string) (string, error) {
+
+	claims := utils.Claims{
+		UserID: userID,
+		StandardClaims: jwt.StandardClaims{
+			ExpiresAt: expiresAt.Unix(),
+			Issuer:    "creatix",
+			Id:        userID,
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.GetSigningMethod("HS256"), claims)
+	tokenString, err := token.SignedString(c.TokenSecret)
+	if err != nil {
+		c.logger.Unsuccessful("not able to generate token string", err)
+		return tokenString, err
+	}
+	return tokenString, nil
+
 }
 
-type Response struct {
-	Status    bool
-	Message   string
-	Token     string
-	ExpiresAt time.Time
-	User
+func (c *SessionClient) GetUserSessionFromEmail(ctx context.Context, email string) (user UserSessionData, err error) {
+	existingUser, err := utils.FindUserByEmail(ctx, c.DB, email)
+	if err != nil {
+		c.logger.Unsuccessful("could not find user based on user email", err)
+		return
+	}
+
+	companies, err := c.CompanyClient.GetUserCompanies(ctx, existingUser.ID)
+	if err != nil {
+		c.logger.Unsuccessful("login.getcompanies.error", err)
+		return
+	}
+
+	return UserSessionData{SessionUser: existingUser, Companies: companies}, nil
 }
 
-var cookieExpireTime = 30 * time.Minute
+func (c *SessionClient) GetUserSessionFromUserId(ctx context.Context, userID string) (user UserSessionData, err error) {
+	existingUser, err := utils.FindUserByUserID(ctx, c.DB, userID)
+	if err != nil {
+		c.logger.Unsuccessful("could not find user based on userid", err)
+		return
+	}
 
-var createUserQuery = `
+	companies, err := c.CompanyClient.GetUserCompanies(ctx, existingUser.ID)
+	if err != nil {
+		c.logger.Unsuccessful("login.getcompanies.error", err)
+		return
+	}
+
+	return UserSessionData{SessionUser: existingUser, Companies: companies}, nil
+}
+
+// LoginUser checks if the user given password and username exists
+// if it does
+func (c *SessionClient) LoginUser(ctx context.Context, loginRequest *LoginRequest) (resp SessionResponse, err error) {
+	userSessionData, err := c.GetUserSessionFromEmail(ctx, loginRequest.Email)
+	if err != nil {
+		c.logger.Unsuccessful("could not get usersessiondata", err)
+		return
+	}
+
+	hashedPassword, err := c.findUserPasswordByEmail(ctx, loginRequest.Email)
+	if err != nil {
+		c.logger.Unsuccessful("could not find user", err)
+		return
+	}
+
+	errf := bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(loginRequest.Password))
+	if errf == bcrypt.ErrMismatchedHashAndPassword {
+		c.logger.Unsuccessful("incorrect email or password", err)
+		err = errors.New("passwords do not match")
+		return
+	}
+
+	if err != nil {
+		c.logger.Unsuccessful("incorrect email or password", err)
+		return
+	}
+
+	expiresAt := time.Now().Local().Add(time.Minute * time.Duration(c.TokenExpirationTime))
+	tokenString, err := c.newToken(expiresAt, userSessionData.SessionUser.ID)
+	if err != nil {
+		c.logger.Unsuccessful("not able to generate token", err)
+		return
+	}
+
+	resp.Status = false
+	resp.Message = "logged in"
+	resp.Token = tokenString
+	resp.ExpiresAt = expiresAt
+	resp.UserSession = userSessionData
+
+	return resp, nil
+}
+
+var createUserCompanyQuery = `
 WITH new_company AS (
 	INSERT INTO company(Name)
 	SELECT CAST($5 AS VARCHAR)
@@ -78,95 +217,98 @@ INSERT INTO USER_COMPANY(CompanyId, UserId)
 values ((SELECT Id from new_company),(SELECT ID FROM new_user))
 `
 
+var createUserQuery = `
+	INSERT INTO users(firstname,lastname,username,email,password)
+	VALUES ($1,$2,$3,$4,$5)
+`
+
 // CreateUser creates a new user in the database
-func (u UserSession) CreateUser(ctx context.Context, db *sql.DB, signup Signup) error {
-	tx, err := db.BeginTx(ctx, &sql.TxOptions{})
+func (c *SessionClient) CreateUser(ctx context.Context, signup Signup) error {
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(signup.Password), bcrypt.DefaultCost)
 	if err != nil {
-		return err
-	}
-	defer func() {
-		if err != nil {
-			tx.Rollback()
-			return
-		}
-	}()
-	res, err := tx.Exec(createUserQuery, signup.Firstname, signup.Lastname, signup.Email, signup.Password, signup.Name)
-	if err != nil {
-		return err
+		return errors.WithMessage(err, "could not generate hashed password")
 	}
 
-	err = tx.Commit()
+	res, err := c.DB.ExecContext(ctx, createUserQuery, signup.Firstname, signup.Lastname, signup.Username, signup.Email, hashedPassword)
 	if err != nil {
-		return err
+		return errors.WithMessage(err, "could not create user given data")
 	}
 
 	nrows, err := res.RowsAffected()
 	if err != nil {
-		return err
+		return errors.WithMessage(err, "no rows affected")
 	}
+
 	if nrows == 0 {
-		return errors.New("0 rows affected")
+		return errors.New("no rows affected")
 	}
 
 	return nil
 }
 
-var findUserByEmailQuery = `
+var findUserPasswordByEmailQuery = `
 	SELECT 
-	ID
-	,Firstname
-	,Lastname
-	,Email
-	,Password
+	Password
 	FROM users
 	WHERE Email = $1
 `
 
-// findUserByEmail returns the first row with the given email
-func findUserByEmail(ctx context.Context, db *sql.DB, email string) (User, error) {
-	var user User
-	tx, err := db.BeginTx(ctx, &sql.TxOptions{})
+func (c *SessionClient) findUserPasswordByEmail(ctx context.Context, email string) (password string, err error) {
+	err = c.DB.QueryRowContext(ctx, findUserPasswordByEmailQuery, email).Scan(&password)
 	if err != nil {
-		return user, err
+		return
 	}
-
-	err = tx.QueryRow(findUserByEmailQuery, email).Scan(&user.ID, &user.Firstname, &user.Lastname, &user.Email, &user.Password)
-	if err != nil {
-		return user, err
-	}
-
-	return user, nil
+	return
 }
 
-// LoginUser checks if the user given password and username exists
-// if it does
-func (u *UserSession) LoginUser(ctx context.Context, db *sql.DB, userEmail string, password string, expirationTimeMinutes int) (Response, error) {
-	var resp Response
-	existingUser, err := findUserByEmail(ctx, db, userEmail)
+var isAuthorizedQuery = `
+	SELECT 
+	uc.UserId
+	FROM USER_COMPANY as uc
+	LEFT JOIN (
+		SELECT 
+		AccessID
+		FROM COMPANY_ACCESS
+	) as ca 
+	ON ca.AccessID = uc.AccessId
+	WHERE uc.CompanyId=$1 AND uc.UserId=$2 AND ca.AccessID<=$3
+`
+
+func (c *SessionClient) IsAuthorized(ctx context.Context, userID, companyID string, authorization AccessLevel) error {
+
+	accessLevelID, err := authorization.ToAccessID()
 	if err != nil {
-		return resp, err
+		return errors.Wrap(err, "not able to get accesslevelid")
 	}
 
-	errf := bcrypt.CompareHashAndPassword([]byte(existingUser.Password), []byte(password))
-	if errf == bcrypt.ErrMismatchedHashAndPassword {
-		resp.Message = "Either the user does not exists or the password is incorrect"
-		return resp, errors.New("passwords do not match")
-	}
-
-	expiresAt := time.Now().Local().Add(time.Minute * time.Duration(expirationTimeMinutes))
-	tokenString, err := utils.NewToken(expiresAt, existingUser.ID, []byte(u.TokenSecret))
+	var userIDScan string
+	err = c.DB.QueryRowContext(ctx, isAuthorizedQuery, companyID, userID, accessLevelID).Scan(&userIDScan)
 	if err != nil {
-		resp.Message = "Either the user does not exists or the password is incorrect"
-		return resp, err
+		return errors.Wrapf(err, "could not check if user with id %s is authorized for companyid %s", userID, companyID)
 	}
 
-	resp.Status = false
-	resp.Message = "logged in"
-	resp.Token = tokenString
-	resp.ExpiresAt = expiresAt
-	resp.User = existingUser
+	if userIDScan != userID {
+		return errors.Wrap(errors.New("invalid user id"), "suspicious")
+	}
 
-	u.ID = existingUser.ID
+	return nil
+}
 
-	return resp, nil
+func (c *SessionClient) IsAuthorizedFromEchoContext(ctx echo.Context, authorization AccessLevel) (authorized bool, err error) {
+	companyID := ctx.Param("company")
+	if companyID == "" {
+		return false, errors.New("company id not provided")
+	}
+
+	userID := ctx.Get(utils.UserIDContext.String()).(string)
+	if userID == "" {
+		return false, errors.New("userid is not in scope")
+	}
+
+	err = c.IsAuthorized(ctx.Request().Context(), userID, companyID, authorization)
+	if err != nil {
+		return
+	}
+
+	return true, nil
 }

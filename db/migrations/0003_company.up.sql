@@ -4,14 +4,34 @@ CREATE TABLE COMPANY
     Name VARCHAR(256) NOT NULL UNIQUE
 );
 
+CREATE TABLE COMPANY_ACCESS
+(
+    AccessID INT UNIQUE NOT NULL,
+    AccessLevel VARCHAR(32) NOT NULL
+);
+
+INSERT INTO COMPANY_ACCESS
+VALUES
+    (1, 'admin'),
+    (2, 'write'),
+    (3, 'read');
+
 CREATE TABLE USER_COMPANY
 (
     CompanyId INT NOT NULL,
     UserId INT NOT NULL,
+    AccessID INT NOT NULL,
 
-    CONSTRAINT fk_company FOREIGN KEY (CompanyId) REFERENCES COMPANY
-(ID),
-    CONSTRAINT fk_user FOREIGN KEY (UserId) REFERENCES USERS(ID)
+    CONSTRAINT pk_user_company UNIQUE (CompanyId,UserId),
+    CONSTRAINT fk_company FOREIGN KEY
+    (CompanyId) REFERENCES COMPANY
+    (ID),
+    CONSTRAINT fk_user FOREIGN KEY
+    (UserId) REFERENCES USERS
+    (ID),
+    CONSTRAINT fk_access FOREIGN KEY
+    (AccessID) REFERENCES COMPANY_ACCESS
+    (AccessID)
 );
 
 CREATE TABLE TEAM
@@ -36,3 +56,8 @@ CREATE TABLE USER_TEAM
     (UserId) REFERENCES USERS
     (ID)
 );
+
+ALTER TABLE FEEDBACK 
+ADD CONSTRAINT fk_feedback_company FOREIGN KEY
+    (CompanyID) REFERENCES Company
+    (Id)

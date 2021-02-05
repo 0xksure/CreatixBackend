@@ -3,6 +3,7 @@ package models
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -15,12 +16,42 @@ const (
 	NewFeedback     WebSocketAction = 1
 	ClapFeedback    WebSocketAction = 2
 	CommentFeedback WebSocketAction = 3
+	UpdateComment   WebSocketAction = 4
 )
+
+type FeedbackClienter interface {
+	CreateFeedback(ctx context.Context, UserID, companyID string, feedback FeedbackRequest) (err error)
+	DeleteFeedback(ctx context.Context, feedbackID string) error
+	UpdateFeedback(ctx context.Context, feedbackID string, feedback FeedbackRequest) error
+
+	IsUserOwnerOfFeedback(ctx context.Context, feedbackID, userID string) (isOwner bool, err error)
+
+	GetUserFeedback(ctx context.Context, userID string) (Feedbacks, error)
+	GetUserFeedbackwData(ctx context.Context, userID string) (feedbacks Feedbacks, err error)
+
+	GetCompanyFeedbacks(ctx context.Context, companyID string) (feedbacks []Feedback, err error)
+	GetCompanyFeedbackswData(ctx context.Context, companyID string) (feedbacks Feedbacks, err error)
+
+	ClapFeedback(ctx context.Context, userID string, feedbackID string) error
+	GetUserClaps(ctx context.Context) error
+
+	CommentFeedback(ctx context.Context, comment, userID, feedbackID string) (err error)
+	UpdateComment(ctx context.Context, commentID, comment string)
+	GetUserComments(ctx context.Context, feedbacks []Feedback) error
+}
+
+type FeedbackClient struct {
+	db *sql.DB
+}
+
+func NewFeedbackClient(db *sql.DB) *FeedbackClient {
+	return &FeedbackClient{db}
+}
 
 type WebSocketRequest struct {
 	Action     WebSocketAction `json:"action"`
-	FeecbackID string          `json:"feedbackId"`
-	Feedback   Feedback        `json:"feedback"`
+	FeedbackID string          `json:"feedbackId"`
+	Feedback   FeedbackRequest `json:"feedback"`
 	Comment    Comment         `json:"comment"`
 }
 
@@ -35,15 +66,22 @@ type Feedback struct {
 	UpdatedAt   *string   `json:"updatedAt`
 }
 
+type FeedbackRequest struct {
+	Title       string `json:"title"`
+	Description string `json:"description"`
+}
+
 type Clap struct {
 	ID         string `json:"id"`
 	UserID     string `json:"userId"`
 	FeedbackID string `json:"feedbackId`
 }
+type CommentRequest struct {
+	Comment string `json:"comment"`
+}
 
 type Comment struct {
 	ID         string `json:"id"`
-	UserID     string `json:"userId"`
 	FeedbackID string `json:"feedbackId"`
 	Person     Person `json:"person"`
 	Comment    string `json:"comment"`
@@ -56,13 +94,13 @@ type Person struct {
 }
 
 var createFeedback = `
-	INSERT INTO FEEDBACK(UserID,Title,Description)
-	VALUES ( $1, $2, $3 );
+	INSERT INTO FEEDBACK(UserID,CompanyID,Title,Description)
+	VALUES ( $1, $2, $3, $4 );
 `
 
 // CreateFeedback inserts the feedback into the database
-func (f Feedback) CreateFeedback(ctx context.Context, db *sql.DB) (err error) {
-	tx, err := db.BeginTx(ctx, &sql.TxOptions{})
+func (c *FeedbackClient) CreateFeedback(ctx context.Context, UserID, companyID string, feedback FeedbackRequest) (err error) {
+	tx, err := c.db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return err
 	}
@@ -72,11 +110,8 @@ func (f Feedback) CreateFeedback(ctx context.Context, db *sql.DB) (err error) {
 			return
 		}
 	}()
-	uid, err := strconv.Atoi(f.UserID)
-	if err != nil {
-		return
-	}
-	res, err := tx.Exec(createFeedback, uid, f.Title, f.Description)
+
+	res, err := tx.Exec(createFeedback, UserID, companyID, feedback.Title, feedback.Description)
 	if err != nil {
 		return err
 	}
@@ -103,8 +138,8 @@ var deleteFeedback = `
 `
 
 // DeleteFeedback deletes feedback written by user
-func (f Feedback) DeleteFeedback(ctx context.Context, db *sql.DB, id string) error {
-	tx, err := db.BeginTx(ctx, &sql.TxOptions{})
+func (c *FeedbackClient) DeleteFeedback(ctx context.Context, feedbackID string) error {
+	tx, err := c.db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return err
 	}
@@ -116,7 +151,7 @@ func (f Feedback) DeleteFeedback(ctx context.Context, db *sql.DB, id string) err
 	}()
 
 	currentTime := time.Now()
-	res, err := tx.Exec(deleteFeedback, currentTime.Format(time.RFC3339), id)
+	res, err := tx.Exec(deleteFeedback, currentTime.Format(time.RFC3339), feedbackID)
 	if err != nil {
 		return err
 	}
@@ -138,6 +173,24 @@ func (f Feedback) DeleteFeedback(ctx context.Context, db *sql.DB, id string) err
 	return nil
 }
 
+var isUserOwnerOfFeedbackQuery = `
+	SELECT UserID
+	FROM FEEDBACK 
+	WHERE UserID=$1 AND Id=$2
+`
+
+func (c *FeedbackClient) IsUserOwnerOfFeedback(ctx context.Context, feedbackID, userID string) (isOwner bool, err error) {
+	var exists bool
+	err = c.db.QueryRowContext(ctx, isUserOwnerOfFeedbackQuery, userID, feedbackID).Scan(&exists)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return false, errors.New("user is not owner of feedback")
+		}
+		return
+	}
+	return
+}
+
 var updateFeedback = `
 	UPDATE FEEDBACK
 	SET Title=$2,Description=$3,UpdatedAt=$4
@@ -145,8 +198,8 @@ var updateFeedback = `
 `
 
 // UpdateFeedback updates the database
-func (f Feedback) UpdateFeedback(ctx context.Context, db *sql.DB) error {
-	tx, err := db.BeginTx(ctx, &sql.TxOptions{})
+func (c *FeedbackClient) UpdateFeedback(ctx context.Context, feedbackID string, feedback FeedbackRequest) error {
+	tx, err := c.db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return err
 	}
@@ -158,7 +211,7 @@ func (f Feedback) UpdateFeedback(ctx context.Context, db *sql.DB) error {
 	}()
 
 	currentTime := time.Now()
-	res, err := tx.Exec(updateFeedback, f.ID, f.Title, f.Description, currentTime.Format(time.RFC3339))
+	res, err := tx.Exec(updateFeedback, feedbackID, feedback.Title, feedback.Description, currentTime.Format(time.RFC3339))
 	if err != nil {
 		return err
 	}
@@ -193,8 +246,8 @@ var clapFeedback = `
 `
 
 // ClapFeedback gives claps to feedback based on id, whomever can clap a feedback
-func (f Feedback) ClapFeedback(ctx context.Context, db *sql.DB, userID string, feedbackID string) error {
-	tx, err := db.BeginTx(ctx, &sql.TxOptions{})
+func (c *FeedbackClient) ClapFeedback(ctx context.Context, userID string, feedbackID string) error {
+	tx, err := c.db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return err
 	}
@@ -230,8 +283,8 @@ func (f Feedback) ClapFeedback(ctx context.Context, db *sql.DB, userID string, f
 
 type Feedbacks []Feedback
 
-func (fs *Feedbacks) GetUserClaps(ctx context.Context, db *sql.DB) error {
-	tx, err := db.BeginTx(ctx, &sql.TxOptions{})
+func (c *FeedbackClient) GetUserClaps(ctx context.Context, feedbacks []Feedback) error {
+	tx, err := c.db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return err
 	}
@@ -242,13 +295,12 @@ func (fs *Feedbacks) GetUserClaps(ctx context.Context, db *sql.DB) error {
 			return
 		}
 	}()
-
-	for idx, f := range *fs {
+	for idx, f := range feedbacks {
 		c, err := getClaps(ctx, tx, f.ID)
 		if err != nil {
 			return err
 		}
-		(*fs)[idx].Claps = c
+		(feedbacks)[idx].Claps = c
 	}
 
 	err = tx.Commit()
@@ -314,13 +366,13 @@ const getUserFeedback = `
 `
 
 // GetUserFeedback returns the feedback created by the given user
-func (f Feedback) GetUserFeedback(ctx context.Context, db *sql.DB, userID string) (Feedbacks, error) {
+func (c *FeedbackClient) GetUserFeedback(ctx context.Context, userID string) (Feedbacks, error) {
 	var feedbacks Feedbacks
 	uid, err := strconv.Atoi(userID)
 	if err != nil {
 		return feedbacks, err
 	}
-	tx, err := db.BeginTx(ctx, &sql.TxOptions{})
+	tx, err := c.db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return feedbacks, err
 	}
@@ -369,26 +421,120 @@ func (f Feedback) GetUserFeedback(ctx context.Context, db *sql.DB, userID string
 	return feedbacks, nil
 }
 
+func (c *FeedbackClient) GetCompanyFeedbackswData(ctx context.Context, companyID string) (feedbacks Feedbacks, err error) {
+	feedbacks, err = c.GetCompanyFeedbacks(ctx, companyID)
+	if err != nil {
+		return
+	}
+
+	err = c.GetUserComments(ctx, feedbacks)
+	if err != nil {
+		return
+	}
+
+	err = c.GetUserClaps(ctx, feedbacks)
+	if err != nil {
+		return
+	}
+	return feedbacks, nil
+}
+
+func (c *FeedbackClient) GetUserFeedbackwData(ctx context.Context, userID string) (feedbacks Feedbacks, err error) {
+	feedbacks, err = c.GetUserFeedback(ctx, userID)
+	if err != nil {
+		return
+	}
+
+	err = c.GetUserComments(ctx, feedbacks)
+	if err != nil {
+		return
+	}
+
+	err = c.GetUserClaps(ctx, feedbacks)
+	if err != nil {
+		return
+	}
+	return feedbacks, nil
+}
+
+const getFeedbackQuery = `
+	SELECT
+	f.ID
+	,f.UserID
+	,u.Firstname
+	,u.Lastname
+	,f.Title
+	,f.Description
+	,f.UpdatedAt
+	FROM FEEDBACK as f
+	LEFT JOIN (
+		SELECT
+		ID 
+		,Firstname
+		,Lastname
+		FROM USERS
+	) as u 
+	ON u.ID=f.UserID
+	WHERE CompanyID=$1 AND DeletedAt IS NULL
+`
+
+// GetCompanyFeedbacks get the feedbacks for the given companyID
+func (c *FeedbackClient) GetCompanyFeedbacks(ctx context.Context, companyID string) (feedbacks []Feedback, err error) {
+	rows, err := c.db.QueryContext(ctx, getFeedbackQuery, companyID)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	var feedback Feedback
+	for rows.Next() {
+		err = rows.Scan(&feedback.ID,
+			&feedback.UserID,
+			&feedback.Person.Firstname,
+			&feedback.Person.Lastname,
+			&feedback.Title,
+			&feedback.Description,
+			&feedback.UpdatedAt,
+		)
+		if err != nil {
+			return
+		}
+		feedbacks = append(feedbacks, feedback)
+	}
+
+	err = rows.Close()
+	if err != nil {
+		return
+	}
+
+	if err = rows.Err(); err != nil {
+		return
+	}
+
+	return
+
+}
+
 const commentFeedback = `
 	INSERT INTO COMMENTS(UserID,FeedbackID,Comment)
 	SELECT $1,$2,$3
 `
 
 // CommentFeedback writes a comment on the feedback
-func (c Comment) CommentFeedback(ctx context.Context, db *sql.DB, UserID string) (err error) {
-	tx, err := db.BeginTx(ctx, &sql.TxOptions{})
+func (c *FeedbackClient) CommentFeedback(ctx context.Context, comment, userID, feedbackID string) (err error) {
+	tx, err := c.db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return
 	}
 
-	uid, err := strconv.Atoi(UserID)
+	uid, err := strconv.Atoi(userID)
 	if err != nil {
-		return err
+		return errors.WithMessage(err, "could not parse uid")
 	}
 
-	fid, err := strconv.Atoi(c.FeedbackID)
+	fid, err := strconv.Atoi(feedbackID)
 	if err != nil {
-		return err
+		return errors.WithMessage(err, fmt.Sprintf("could not parse fid: %d", fid))
 	}
 
 	defer func() {
@@ -398,9 +544,9 @@ func (c Comment) CommentFeedback(ctx context.Context, db *sql.DB, UserID string)
 		}
 	}()
 
-	res, err := tx.ExecContext(ctx, commentFeedback, uid, fid, c.Comment)
+	res, err := tx.ExecContext(ctx, commentFeedback, uid, fid, comment)
 	if err != nil {
-		return
+		return errors.WithMessage(err, "could not comment feedback")
 	}
 
 	err = tx.Commit()
@@ -424,8 +570,8 @@ UPDATE COMMENTS SET Comment=$2,UpdatedAt=$3 WHERE ID=$1
 `
 
 // UpdateComment updates a comment based on the comment ID
-func (c Comment) UpdateComment(ctx context.Context, db *sql.DB) error {
-	tx, err := db.BeginTx(ctx, &sql.TxOptions{})
+func (c *FeedbackClient) UpdateComment(ctx context.Context, commentID, comment string) error {
+	tx, err := c.db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return err
 	}
@@ -437,12 +583,12 @@ func (c Comment) UpdateComment(ctx context.Context, db *sql.DB) error {
 		}
 	}()
 
-	cid, err := strconv.Atoi(c.ID)
+	cid, err := strconv.Atoi(commentID)
 	if err != nil {
 		return err
 	}
 	currentTime := time.Now()
-	res, err := tx.ExecContext(ctx, updateComment, cid, c.Comment, currentTime.Format(time.RFC3339))
+	res, err := tx.ExecContext(ctx, updateComment, cid, comment, currentTime.Format(time.RFC3339))
 	if err != nil {
 		return err
 	}
@@ -463,8 +609,8 @@ func (c Comment) UpdateComment(ctx context.Context, db *sql.DB) error {
 	return nil
 }
 
-func (fs *Feedbacks) GetUserComments(ctx context.Context, db *sql.DB) error {
-	tx, err := db.BeginTx(ctx, &sql.TxOptions{})
+func (c *FeedbackClient) GetUserComments(ctx context.Context, feedbacks []Feedback) error {
+	tx, err := c.db.BeginTx(ctx, &sql.TxOptions{})
 	if err != nil {
 		return err
 	}
@@ -476,12 +622,12 @@ func (fs *Feedbacks) GetUserComments(ctx context.Context, db *sql.DB) error {
 		}
 	}()
 
-	for idx, f := range *fs {
+	for idx, f := range feedbacks {
 		c, err := getComments(ctx, tx, f.ID)
 		if err != nil {
 			return err
 		}
-		(*fs)[idx].Comments = c
+		(feedbacks)[idx].Comments = c
 	}
 
 	err = tx.Commit()
@@ -494,7 +640,8 @@ func (fs *Feedbacks) GetUserComments(ctx context.Context, db *sql.DB) error {
 const getCommentsQuery = `
 SELECT 
 c.ID
-,c.comment 
+,c.comment
+,c.FeedbackId 
 ,c.userid
 ,u.firstname
 ,u.lastname
@@ -518,7 +665,7 @@ func getComments(ctx context.Context, tx *sql.Tx, feedbackID string) ([]Comment,
 	defer rows.Close()
 	for rows.Next() {
 		var comment Comment
-		if err := rows.Scan(&comment.ID, &comment.Comment, &comment.UserID, &comment.Person.Firstname, &comment.Person.Lastname); err != nil {
+		if err := rows.Scan(&comment.ID, &comment.Comment, &comment.FeedbackID, &comment.Person.ID, &comment.Person.Firstname, &comment.Person.Lastname); err != nil {
 			return comments, err
 		}
 

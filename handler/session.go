@@ -7,8 +7,6 @@ import (
 	"time"
 
 	"github.com/labstack/echo"
-	"github.com/sendgrid/sendgrid-go"
-	"github.com/sendgrid/sendgrid-go/helpers/mail"
 
 	"github.com/kristohberg/CreatixBackend/config"
 	"github.com/kristohberg/CreatixBackend/utils"
@@ -16,34 +14,26 @@ import (
 
 	"github.com/kristohberg/CreatixBackend/logging"
 	"github.com/kristohberg/CreatixBackend/models"
-	"golang.org/x/crypto/bcrypt"
 )
 
 type SessionAPI struct {
-	DB          *sql.DB
-	Logging     *logging.StandardLogger
-	Cfg         config.Config
-	UserSession models.UserSession
+	DB            *sql.DB
+	Logging       *logging.StandardLogger
+	Cfg           config.Config
+	SessionClient *models.SessionClient
 }
 
-// LoginRequest contains the login credentials
-type LoginRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-}
+var (
+	POSTSignupNewUserPath = "/user/signup"
+)
 
 // Handler sets up the session endpoints
 func (s SessionAPI) Handler(e *echo.Group) {
-	e.GET("/health", Health)
-	e.POST("/user/signup", s.Signup)
+	e.POST(POSTSignupNewUserPath, s.Signup)
 	e.POST("/user/login", s.Login)
 	e.POST("/user/refresh", s.Refresh)
 	e.GET("/user/logout", s.Logout)
-	e.POST("/contact-us", s.ContactUs)
-}
 
-func Health(c echo.Context) error {
-	return c.String(http.StatusOK, "I'm up")
 }
 
 // Signup signups the new user
@@ -55,14 +45,12 @@ func (s SessionAPI) Signup(c echo.Context) (err error) {
 		return c.JSON(http.StatusBadRequest, web.HttpResponse{Message: "could not bind data"})
 	}
 
-	pass, err := bcrypt.GenerateFromPassword([]byte(signup.Password), bcrypt.DefaultCost)
+	err = signup.Valid()
 	if err != nil {
-		s.Logging.Unsuccessful("not able to encrypt password", err)
-		return c.JSON(http.StatusBadRequest, web.HttpResponse{Message: "could not generate hashed password"})
+		return c.JSON(http.StatusBadRequest, err)
 	}
 
-	signup.Password = string(pass)
-	err = s.UserSession.CreateUser(c.Request().Context(), s.DB, *signup)
+	err = s.SessionClient.CreateUser(c.Request().Context(), *signup)
 	if err != nil {
 		s.Logging.Unsuccessful("not able to create user ", err)
 		return c.String(http.StatusBadRequest, "could not create user")
@@ -72,19 +60,20 @@ func (s SessionAPI) Signup(c echo.Context) (err error) {
 }
 
 // Login checks whether the user exists and creates a cookie
-func (s SessionAPI) Login(c echo.Context) error {
-	loginRequest := new(LoginRequest)
-	err := c.Bind(loginRequest)
+func (s SessionAPI) Login(c echo.Context) (err error) {
+	loginRequest := new(models.LoginRequest)
+	err = c.Bind(loginRequest)
 	if err != nil {
 		s.Logging.Unsuccessful("not able to parse user", err)
 		return c.String(http.StatusBadRequest, "not able to parse user")
 	}
 
-	resp, err := s.UserSession.LoginUser(c.Request().Context(), s.DB, loginRequest.Email, loginRequest.Password, s.Cfg.TokenExpirationTimeMinutes)
+	resp, err := s.SessionClient.LoginUser(c.Request().Context(), loginRequest)
 	if err != nil {
 		s.Logging.Unsuccessful("not able to log in user", err)
 		return c.String(http.StatusBadRequest, "no user")
 	}
+
 	cookie := &http.Cookie{
 		Name:    "token",
 		Value:   resp.Token,
@@ -92,12 +81,14 @@ func (s SessionAPI) Login(c echo.Context) error {
 		Path:    "/v0",
 		Domain:  s.Cfg.AllowCookieDomain,
 	}
+
 	if s.Cfg.Env == "prod" {
 		cookie.SameSite = http.SameSiteNoneMode
 		cookie.Secure = true
 	}
+
 	c.SetCookie(cookie)
-	return c.JSON(http.StatusOK, resp)
+	return c.JSON(http.StatusOK, resp.UserSession)
 }
 
 // Logout will set a new invalid cookie
@@ -136,40 +127,18 @@ func (s SessionAPI) Refresh(c echo.Context) error {
 		cookie.SameSite = http.SameSiteNoneMode
 		cookie.Secure = true
 	}
+	claims, err := utils.GetClaims(tokenValue, []byte(s.Cfg.TokenSecret))
+	if err != nil {
+		s.Logging.Unsuccessful("no claim", err)
+		return c.String(http.StatusBadRequest, "")
+	}
+
+	userSessionData, err := s.SessionClient.GetUserSessionFromUserId(c.Request().Context(), claims.UserID)
+	if err != nil {
+		s.Logging.Unsuccessful("failed to retrieve user session data", err)
+		return c.String(http.StatusBadRequest, "")
+	}
+
 	c.SetCookie(cookie)
-	return c.JSON(http.StatusOK, "")
-}
-
-type ContactUsContent struct {
-	Email   string `json:"email"`
-	Content string `json:"content"`
-}
-
-// ContactUs handles
-func (s SessionAPI) ContactUs(c echo.Context) error {
-	var contactUsContent ContactUsContent
-	err := c.Bind(&contactUsContent)
-	if err != nil {
-		s.Logging.Unsuccessful("could not parse email contact", err)
-		return c.JSON(http.StatusBadRequest, web.HttpResponse{Message: "not able to bind contact content"})
-	}
-	from := mail.NewEmail("ContactUs", contactUsContent.Email)
-	subject := "creatix: Contact us"
-	to := mail.NewEmail("thecreatix", s.Cfg.ContactEmail)
-	plainTextContent := contactUsContent.Content
-	htmlContent := ""
-	message := mail.NewSingleEmail(from, subject, to, plainTextContent, htmlContent)
-	client := sendgrid.NewSendClient(s.Cfg.SendgridKey)
-	response, err := client.Send(message)
-	if err != nil {
-		s.Logging.Unsuccessful("could not send email", err)
-		return c.JSON(http.StatusInternalServerError, nil)
-	}
-
-	if response.StatusCode > 300 {
-		s.Logging.Unsuccessful(fmt.Sprintf("could not send email: %d", response.StatusCode), nil)
-		return c.JSON(response.StatusCode, nil)
-	}
-	return c.JSON(response.StatusCode, "")
-
+	return c.JSON(http.StatusOK, userSessionData)
 }
