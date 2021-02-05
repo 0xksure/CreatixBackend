@@ -21,8 +21,9 @@ type CompanyClienter interface {
 	// Company
 	CreateCompany(ctx context.Context, company, userId string) (companyID *int64, err error)
 	AddUserToCompanyByEmail(ctx context.Context, companyID string, newUserRequest AddUser) error
+	AddUserToCompanyByUsername(ctx context.Context, companyID string, newUserRequest AddUser) error
 	UpdateUserPermission(ctx context.Context, companyID string, userPermissionRequest UserPermissionRequest) error
-	DeleteUser(ctx context.Context, companyID string, userPermissionRequest UserPermissionRequest) error
+	DeleteUser(ctx context.Context, companyID, UserID string) (err error)
 	SearchCompany(ctx context.Context, query string) (queryResult []Company, err error)
 	GetCompanyUsers(ctx context.Context, companyID string) ([]CompanyUserResponse, error)
 	GetUserCompanies(ctx context.Context, userID string) (companies []Company, err error)
@@ -55,6 +56,7 @@ const getUserCompaniesQuery = `
 `
 
 func (c *CompanyClient) GetUserCompanies(ctx context.Context, userID string) (companies []Company, err error) {
+	companies = []Company{}
 	rows, err := c.DB.QueryContext(ctx, getUserCompaniesQuery, userID)
 	if err != nil {
 		return companies, err
@@ -109,6 +111,30 @@ func (c *CompanyClient) AddUserToCompanyByEmail(ctx context.Context, companyID s
 	return nil
 }
 
+// AddUserToCompanyByUsername adds a user by username
+func (c *CompanyClient) AddUserToCompanyByUsername(ctx context.Context, companyID string, newUserRequest AddUser) (err error) {
+
+	user, err := utils.FindUserByUsername(ctx, c.DB, newUserRequest.Username)
+	if err != nil {
+		return
+	}
+
+	accessID, err := newUserRequest.Access.ToAccessID()
+	if err != nil {
+		return errors.WithStack(err)
+	}
+	res, err := c.DB.ExecContext(ctx, addUserToCompanyByEmailQuery, companyID, user.ID, accessID)
+	if err != nil {
+		return
+	}
+
+	nrows, err := res.RowsAffected()
+	if err != nil || nrows == 0 {
+		return errors.New("not able to add user")
+	}
+	return nil
+}
+
 const updateUserPermissionQuery = `
 	UPDATE USER_COMPANY
 	SET AccessId=$3
@@ -138,8 +164,8 @@ const deleteUserQuery = `
 	WHERE CompanyId=$1 AND UserId=$2;
 `
 
-func (c *CompanyClient) DeleteUser(ctx context.Context, companyID string, user UserPermissionRequest) (err error) {
-	res, err := c.DB.ExecContext(ctx, deleteUserQuery, companyID, user.UserID)
+func (c *CompanyClient) DeleteUser(ctx context.Context, companyID, UserID string) (err error) {
+	res, err := c.DB.ExecContext(ctx, deleteUserQuery, companyID, UserID)
 	if err != nil {
 		return errors.WithStack(err)
 	}

@@ -37,8 +37,9 @@ func (a AccessLevel) ToAccessID() (AccessID int, err error) {
 }
 
 type AddUser struct {
-	Email  string      `json:"email"`
-	Access AccessLevel `json:"accessLevel"`
+	Email    string      `json:"email"`
+	Username string      `json:"username"`
+	Access   AccessLevel `json:"accessLevel"`
 }
 
 type UserPermissionRequest struct {

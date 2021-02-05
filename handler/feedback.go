@@ -257,7 +257,7 @@ func (api RestAPI) FeedbackWebSocket(c echo.Context) error {
 
 	for {
 		// SEND
-		feedbacks, err := api.FeedbackClient.GetUserFeedbackwData(c.Request().Context(), userID)
+		feedbacks, err := api.FeedbackClient.GetCompanyFeedbackswData(c.Request().Context(), companyID)
 		if err != nil {
 			api.Logging.Unsuccessful("creatix.feedback.FeedbackWebsocket: not able to get feedback", err)
 			break
@@ -268,21 +268,34 @@ func (api RestAPI) FeedbackWebSocket(c echo.Context) error {
 		}
 
 		// Receive
-		wsRequest := models.WebSocketRequest{}
+		var wsRequest models.WebSocketRequest
 		err = ws.ReadJSON(&wsRequest)
 		if err != nil {
 			api.Logging.Unsuccessful("creatix.feedback.FeedbackWebsocket: not able to parse feedback", err)
-
+			break
 		}
+		api.Logging.Success(fmt.Sprint("successfully parsed ", wsRequest.FeedbackID, wsRequest.Comment))
 		switch wsRequest.Action {
 		case 1:
-			api.FeedbackClient.CreateFeedback(c.Request().Context(), userID, companyID, wsRequest.Feedback)
+			err = api.FeedbackClient.CreateFeedback(c.Request().Context(), userID, companyID, wsRequest.Feedback)
+			if err != nil {
+				api.Logging.Unsuccessful("creatix.feedback.CreateFeedback", err)
+			}
 		case 2:
-			api.FeedbackClient.ClapFeedback(c.Request().Context(), userID, wsRequest.FeecbackID)
+			err = api.FeedbackClient.ClapFeedback(c.Request().Context(), userID, wsRequest.FeedbackID)
+			if err != nil {
+				api.Logging.Unsuccessful("creatix.feedback.ClapFeedback", err)
+			}
 		case 3:
-			api.FeedbackClient.CommentFeedback(c.Request().Context(), wsRequest.Comment.Comment, userID, wsRequest.FeecbackID)
+			err = api.FeedbackClient.CommentFeedback(c.Request().Context(), wsRequest.Comment.Comment, userID, wsRequest.FeedbackID)
+			if err != nil {
+				api.Logging.Unsuccessful("creatix.feedback.CommentFeedback", err)
+			}
 		case 4:
-			api.FeedbackClient.UpdateComment(c.Request().Context(), wsRequest.Comment.ID, wsRequest.Comment.Comment)
+			err = api.FeedbackClient.UpdateComment(c.Request().Context(), wsRequest.Comment.ID, wsRequest.Comment.Comment)
+			if err != nil {
+				api.Logging.Unsuccessful("creatix.feedback.UpdateComment", err)
+			}
 		default:
 			api.Logging.Unsuccessful(fmt.Sprintf("creatix.feedback.FeedbackWebsocket: option %d is not a valid ws option", wsRequest.Action), err)
 			break

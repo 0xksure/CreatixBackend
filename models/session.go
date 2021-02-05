@@ -19,7 +19,7 @@ import (
 
 type SessionClienter interface {
 	CreateUser(ctx context.Context, signup Signup) error
-	LoginUser(ctx context.Context, loginRequest *LoginRequest) (Response, error)
+	LoginUser(ctx context.Context, loginRequest *LoginRequest) (SessionResponse, error)
 }
 
 type SessionClient struct {
@@ -27,11 +27,13 @@ type SessionClient struct {
 	TokenSecret         []byte
 	TokenExpirationTime int
 	logger              *logging.StandardLogger
+	CompanyClient       CompanyClienter
 }
 
 // NewSessionClient creates new session client
 func NewSessionClient(DB *sql.DB, tokenSecret []byte, tokenExpirationTime int, logger *logging.StandardLogger) *SessionClient {
-	return &SessionClient{DB: DB, TokenSecret: tokenSecret, TokenExpirationTime: tokenExpirationTime, logger: logger}
+	companyClient := NewCompanyClient(DB)
+	return &SessionClient{DB: DB, TokenSecret: tokenSecret, TokenExpirationTime: tokenExpirationTime, logger: logger, CompanyClient: companyClient}
 }
 
 // LoginRequest contains the login credentials
@@ -89,12 +91,16 @@ func (s Signup) Valid() error {
 	return nil
 }
 
-type Response struct {
-	Status      bool              `json:"status"`
-	Message     string            `json:"message"`
-	Token       string            `json:"token"`
-	ExpiresAt   time.Time         `json:"expiresAt"`
-	SessionUser utils.SessionUser `json:"sessionUser"`
+type UserSessionData struct {
+	SessionUser utils.SessionUser `json:"user"`
+	Companies   []Company         `json:"companies"`
+}
+type SessionResponse struct {
+	Status      bool      `json:"status"`
+	Message     string    `json:"message"`
+	Token       string    `json:"token"`
+	ExpiresAt   time.Time `json:"expiresAt"`
+	UserSession UserSessionData
 }
 
 // NewToken creates a new token with a default claim
@@ -119,12 +125,44 @@ func (c *SessionClient) newToken(expiresAt time.Time, userID string) (string, er
 
 }
 
+func (c *SessionClient) GetUserSessionFromEmail(ctx context.Context, email string) (user UserSessionData, err error) {
+	existingUser, err := utils.FindUserByEmail(ctx, c.DB, email)
+	if err != nil {
+		c.logger.Unsuccessful("could not find user based on user email", err)
+		return
+	}
+
+	companies, err := c.CompanyClient.GetUserCompanies(ctx, existingUser.ID)
+	if err != nil {
+		c.logger.Unsuccessful("login.getcompanies.error", err)
+		return
+	}
+
+	return UserSessionData{SessionUser: existingUser, Companies: companies}, nil
+}
+
+func (c *SessionClient) GetUserSessionFromUserId(ctx context.Context, userID string) (user UserSessionData, err error) {
+	existingUser, err := utils.FindUserByUserID(ctx, c.DB, userID)
+	if err != nil {
+		c.logger.Unsuccessful("could not find user based on userid", err)
+		return
+	}
+
+	companies, err := c.CompanyClient.GetUserCompanies(ctx, existingUser.ID)
+	if err != nil {
+		c.logger.Unsuccessful("login.getcompanies.error", err)
+		return
+	}
+
+	return UserSessionData{SessionUser: existingUser, Companies: companies}, nil
+}
+
 // LoginUser checks if the user given password and username exists
 // if it does
-func (c *SessionClient) LoginUser(ctx context.Context, loginRequest *LoginRequest) (resp Response, err error) {
-	existingUser, err := utils.FindUserByEmail(ctx, c.DB, loginRequest.Email)
+func (c *SessionClient) LoginUser(ctx context.Context, loginRequest *LoginRequest) (resp SessionResponse, err error) {
+	userSessionData, err := c.GetUserSessionFromEmail(ctx, loginRequest.Email)
 	if err != nil {
-		c.logger.Unsuccessful("could not find user", err)
+		c.logger.Unsuccessful("could not get usersessiondata", err)
 		return
 	}
 
@@ -147,7 +185,7 @@ func (c *SessionClient) LoginUser(ctx context.Context, loginRequest *LoginReques
 	}
 
 	expiresAt := time.Now().Local().Add(time.Minute * time.Duration(c.TokenExpirationTime))
-	tokenString, err := c.newToken(expiresAt, existingUser.ID)
+	tokenString, err := c.newToken(expiresAt, userSessionData.SessionUser.ID)
 	if err != nil {
 		c.logger.Unsuccessful("not able to generate token", err)
 		return
@@ -157,7 +195,7 @@ func (c *SessionClient) LoginUser(ctx context.Context, loginRequest *LoginReques
 	resp.Message = "logged in"
 	resp.Token = tokenString
 	resp.ExpiresAt = expiresAt
-	resp.SessionUser = existingUser
+	resp.UserSession = userSessionData
 
 	return resp, nil
 }
@@ -246,7 +284,7 @@ func (c *SessionClient) IsAuthorized(ctx context.Context, userID, companyID stri
 	var userIDScan string
 	err = c.DB.QueryRowContext(ctx, isAuthorizedQuery, companyID, userID, accessLevelID).Scan(&userIDScan)
 	if err != nil {
-		return errors.Wrap(err, "could not check if user is authorized")
+		return errors.Wrapf(err, "could not check if user with id %s is authorized for companyid %s", userID, companyID)
 	}
 
 	if userIDScan != userID {

@@ -102,7 +102,7 @@ func TestCompany(t *testing.T) {
 	c.SetParamNames("company")
 	c.SetParamValues("1")
 	c.Set(utils.UserIDContext.String(), "1")
-	err = restAPI.AddUserToCompany(c)
+	err = restAPI.AddUserByEmailToCompany(c)
 	if assert.NoError(t, err) {
 		assert.Equal(t, http.StatusOK, rec.Code)
 	}
@@ -113,7 +113,7 @@ func TestCompany(t *testing.T) {
 	c.SetParamNames("company")
 	c.SetParamValues("1")
 	c.Set(utils.UserIDContext.String(), "1")
-	err = restAPI.AddUserToCompany(c)
+	err = restAPI.AddUserByEmailToCompany(c)
 	if assert.NoError(t, err) {
 		assert.Equal(t, http.StatusBadRequest, rec.Code)
 	}

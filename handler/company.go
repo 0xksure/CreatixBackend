@@ -11,19 +11,19 @@ import (
 )
 
 var (
-	AddNewUserToCompanyPath  = "/company/:company/adduser"
-	POSTCreateNewCompanyPath = "/company/create"
+	AddNewUserByEmailToCompanyPath = "/company/:company/adduser"
+	POSTCreateNewCompanyPath       = "/company/create"
 )
 
 func (api RestAPI) CompanyHandler(e *echo.Group) {
 	e.GET("/company/search/{query}", api.SearchCompany)
 
 	e.POST(POSTCreateNewCompanyPath, api.CreateCompany)
-	e.POST(AddNewUserToCompanyPath, api.AddUserToCompany)
+	e.POST(AddNewUserByEmailToCompanyPath, api.AddUserByEmailToCompany)
 	e.POST("/company/:company/permission", api.ChangeUserPermission)
 	e.GET("/company/:company/users", api.GetCompanyUsers)
 	e.GET("/user/companies", api.GetUserCompanies)
-	e.DELETE("/company/:company/user", api.DeleteCompanyUser)
+	e.DELETE("/company/:company/user/:userid", api.DeleteCompanyUser)
 }
 
 // CreateCompany creates a new company
@@ -53,7 +53,7 @@ func (api RestAPI) CreateCompany(c echo.Context) (err error) {
 	return c.JSON(http.StatusOK, web.HttpResponse{Message: "created company"})
 }
 
-func (api RestAPI) AddUserToCompany(c echo.Context) (err error) {
+func (api RestAPI) AddUserByEmailToCompany(c echo.Context) (err error) {
 	companyID := c.Param("company")
 	if companyID == "" {
 		api.Logging.Unsuccessful("no company provided ", nil)
@@ -63,7 +63,7 @@ func (api RestAPI) AddUserToCompany(c echo.Context) (err error) {
 	userID := c.Get(utils.UserIDContext.String()).(string)
 	if userID == "" {
 		api.Logging.Unsuccessful("not authorized", errors.New("userID not provided"))
-		return errors.WithStack(errors.New("could not get user id"))
+		return c.String(http.StatusUnauthorized, "could not get userid")
 	}
 
 	err = api.SessionClient.IsAuthorized(c.Request().Context(), userID, companyID, models.Admin)
@@ -79,11 +79,23 @@ func (api RestAPI) AddUserToCompany(c echo.Context) (err error) {
 		return c.String(http.StatusBadRequest, "")
 	}
 
-	err = api.CompanyClient.AddUserToCompanyByEmail(c.Request().Context(), companyID, *newUserRequest)
-	if err != nil {
-		api.Logging.Unsuccessful("could not add user", err)
+	if newUserRequest.Username != "" {
+		err = api.CompanyClient.AddUserToCompanyByUsername(c.Request().Context(), companyID, *newUserRequest)
+		if err != nil {
+			api.Logging.Unsuccessful("could not add user", err)
+			return c.String(http.StatusBadRequest, "")
+		}
+	} else if newUserRequest.Email != "" {
+		err = api.CompanyClient.AddUserToCompanyByEmail(c.Request().Context(), companyID, *newUserRequest)
+		if err != nil {
+			api.Logging.Unsuccessful("could not add user", err)
+			return c.String(http.StatusBadRequest, "")
+		}
+	} else {
+		api.Logging.Unsuccessful("could not add user", errors.New("no user specified"))
 		return c.String(http.StatusBadRequest, "")
 	}
+
 	return c.String(http.StatusOK, companyID)
 }
 
@@ -105,14 +117,13 @@ func (api RestAPI) DeleteCompanyUser(c echo.Context) (err error) {
 		return c.String(http.StatusUnauthorized, "")
 	}
 
-	uerRequest := new(models.UserPermissionRequest)
-	err = c.Bind(uerRequest)
-	if err != nil {
-		api.Logging.Unsuccessful("could not bind user", err)
+	userIDToDelete := c.Param("userid")
+	if userIDToDelete == "" {
+		api.Logging.Unsuccessful("no userid to delete provided ", nil)
 		return c.String(http.StatusBadRequest, "")
 	}
 
-	err = api.CompanyClient.DeleteUser(c.Request().Context(), companyID, *uerRequest)
+	err = api.CompanyClient.DeleteUser(c.Request().Context(), companyID, userIDToDelete)
 	if err != nil {
 		api.Logging.Unsuccessful("could not delete user", err)
 		return c.String(http.StatusInternalServerError, "")

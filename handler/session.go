@@ -67,6 +67,7 @@ func (s SessionAPI) Login(c echo.Context) (err error) {
 		s.Logging.Unsuccessful("not able to parse user", err)
 		return c.String(http.StatusBadRequest, "not able to parse user")
 	}
+
 	resp, err := s.SessionClient.LoginUser(c.Request().Context(), loginRequest)
 	if err != nil {
 		s.Logging.Unsuccessful("not able to log in user", err)
@@ -87,7 +88,7 @@ func (s SessionAPI) Login(c echo.Context) (err error) {
 	}
 
 	c.SetCookie(cookie)
-	return c.JSON(http.StatusOK, resp.SessionUser)
+	return c.JSON(http.StatusOK, resp.UserSession)
 }
 
 // Logout will set a new invalid cookie
@@ -126,6 +127,18 @@ func (s SessionAPI) Refresh(c echo.Context) error {
 		cookie.SameSite = http.SameSiteNoneMode
 		cookie.Secure = true
 	}
+	claims, err := utils.GetClaims(tokenValue, []byte(s.Cfg.TokenSecret))
+	if err != nil {
+		s.Logging.Unsuccessful("no claim", err)
+		return c.String(http.StatusBadRequest, "")
+	}
+
+	userSessionData, err := s.SessionClient.GetUserSessionFromUserId(c.Request().Context(), claims.UserID)
+	if err != nil {
+		s.Logging.Unsuccessful("failed to retrieve user session data", err)
+		return c.String(http.StatusBadRequest, "")
+	}
+
 	c.SetCookie(cookie)
-	return c.JSON(http.StatusOK, "")
+	return c.JSON(http.StatusOK, userSessionData)
 }

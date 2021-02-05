@@ -3,6 +3,7 @@ package models
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -49,7 +50,7 @@ func NewFeedbackClient(db *sql.DB) *FeedbackClient {
 
 type WebSocketRequest struct {
 	Action     WebSocketAction `json:"action"`
-	FeecbackID string          `json:"feedbackId"`
+	FeedbackID string          `json:"feedbackId"`
 	Feedback   FeedbackRequest `json:"feedback"`
 	Comment    Comment         `json:"comment"`
 }
@@ -472,7 +473,6 @@ const getFeedbackQuery = `
 		,Firstname
 		,Lastname
 		FROM USERS
-		WHERE ID=$1
 	) as u 
 	ON u.ID=f.UserID
 	WHERE CompanyID=$1 AND DeletedAt IS NULL
@@ -529,12 +529,12 @@ func (c *FeedbackClient) CommentFeedback(ctx context.Context, comment, userID, f
 
 	uid, err := strconv.Atoi(userID)
 	if err != nil {
-		return err
+		return errors.WithMessage(err, "could not parse uid")
 	}
 
 	fid, err := strconv.Atoi(feedbackID)
 	if err != nil {
-		return err
+		return errors.WithMessage(err, fmt.Sprintf("could not parse fid: %d", fid))
 	}
 
 	defer func() {
@@ -546,7 +546,7 @@ func (c *FeedbackClient) CommentFeedback(ctx context.Context, comment, userID, f
 
 	res, err := tx.ExecContext(ctx, commentFeedback, uid, fid, comment)
 	if err != nil {
-		return
+		return errors.WithMessage(err, "could not comment feedback")
 	}
 
 	err = tx.Commit()

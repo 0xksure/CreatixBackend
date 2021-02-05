@@ -88,7 +88,7 @@ func TestFeedback(t *testing.T) {
 	parameterNameValue := [][]string{{"company"}, {"1"}}
 	newAdminUser, err := NewMockUserBytes("john@doe.no", models.Admin)
 	require.NoError(t, err)
-	requester(AddNewUserToCompanyPath, "1", parameterNameValue, newAdminUser, restAPI.AddUserToCompany, http.StatusOK, nil)
+	requester(AddNewUserByEmailToCompanyPath, "1", parameterNameValue, newAdminUser, restAPI.AddUserByEmailToCompany, http.StatusOK, nil)
 
 	// Postfeedback as admin
 	feedback, err := NewMockFeedbackBytes()
@@ -138,7 +138,7 @@ func TestClapFeedback(t *testing.T) {
 	parameterNameValue := [][]string{{"company"}, {"1"}}
 	newReaderUser, err := NewMockUserBytes("john@doe.no", models.Read)
 	require.NoError(t, err)
-	requester(AddNewUserToCompanyPath, "1", parameterNameValue, newReaderUser, restAPI.AddUserToCompany, http.StatusOK, nil)
+	requester(AddNewUserByEmailToCompanyPath, "1", parameterNameValue, newReaderUser, restAPI.AddUserByEmailToCompany, http.StatusOK, nil)
 
 	// Postfeedback as admin
 	feedback, err := NewMockFeedbackBytes()
@@ -191,7 +191,7 @@ func TestCommentFeedback(t *testing.T) {
 	parameterNameValue := [][]string{{"company"}, {"1"}}
 	newReaderUser, err := NewMockUserBytes("john@doe.no", models.Read)
 	require.NoError(t, err)
-	requester(AddNewUserToCompanyPath, "1", parameterNameValue, newReaderUser, restAPI.AddUserToCompany, http.StatusOK, nil)
+	requester(AddNewUserByEmailToCompanyPath, "1", parameterNameValue, newReaderUser, restAPI.AddUserByEmailToCompany, http.StatusOK, nil)
 
 	// Postfeedback as admin
 	feedback, err := NewMockFeedbackBytes()

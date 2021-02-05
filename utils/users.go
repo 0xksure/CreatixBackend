@@ -36,3 +36,39 @@ func FindUserByEmail(ctx context.Context, DB *sql.DB, email string) (user Sessio
 	}
 	return user, nil
 }
+
+var findUserByUserIdQuery = `
+	SELECT 
+	ID
+	,Firstname
+	,Lastname
+	,Email
+	FROM users
+	WHERE ID = $1
+`
+
+func FindUserByUserID(ctx context.Context, DB *sql.DB, userID string) (user SessionUser, err error) {
+	err = DB.QueryRowContext(ctx, findUserByUserIdQuery, userID).Scan(&user.ID, &user.Firstname, &user.Lastname, &user.Email)
+	if err != nil {
+		return user, errors.WithMessagef(err, "feedback.utils.finduserbyuserid")
+	}
+	return user, nil
+}
+
+var findUserByUsernameQuery = `
+	SELECT 
+	ID
+	,Firstname
+	,Lastname
+	,Email
+	FROM users
+	WHERE username = $1
+`
+
+func FindUserByUsername(ctx context.Context, DB *sql.DB, username string) (user SessionUser, err error) {
+	err = DB.QueryRowContext(ctx, findUserByUsernameQuery, username).Scan(&user.ID, &user.Firstname, &user.Lastname, &user.Email)
+	if err != nil {
+		return user, errors.WithMessagef(err, "feedback.utils.finduserbyuserid")
+	}
+	return user, nil
+}
