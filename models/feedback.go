@@ -38,6 +38,8 @@ type FeedbackClienter interface {
 	CommentFeedback(ctx context.Context, comment, userID, feedbackID string) (err error)
 	UpdateComment(ctx context.Context, commentID, comment string)
 	GetUserComments(ctx context.Context, feedbacks []Feedback) error
+
+	SearchFeedbackwData(ctx context.Context, companyID, query string) (feedbacks Feedbacks, err error)
 }
 
 type FeedbackClient struct {
@@ -91,6 +93,98 @@ type Person struct {
 	ID        string `json:"id"`
 	Firstname string `json:"firstname"`
 	Lastname  string `json:"lastname"`
+}
+
+var EmptyFeedbackError = errors.New("empty feedbacks")
+
+func (c *FeedbackClient) SearchFeedbackwData(ctx context.Context, companyID, query string) (feedbacks Feedbacks, err error) {
+	feedbacks, err = c.searchFeedback(ctx, companyID, query)
+	if err != nil {
+		return
+	}
+
+	if len(feedbacks) == 0 {
+		return feedbacks, EmptyFeedbackError
+	}
+
+	err = c.GetUserComments(ctx, feedbacks)
+	if err != nil {
+		return
+	}
+
+	err = c.GetUserClaps(ctx, feedbacks)
+	if err != nil {
+		return
+	}
+	return feedbacks, nil
+}
+
+var searchFeedbackQuery = `
+SELECT 
+    f.ID
+	,f.UserID
+	,u.Firstname
+	,u.Lastname
+	,f.Title
+	,f.Description
+	,f.UpdatedAt
+FROM (
+    SELECT 
+        id, 
+        userid,
+        companyid, 
+        title,
+        description,
+        createdat,
+        updatedat,
+        ts_rank_cd(textsearch, query) AS rank
+    FROM feedback,
+    to_tsquery($1) query, to_tsvector(coalesce(description,'') || ' ' || coalesce(title,'')) textsearch
+    WHERE query @@ textsearch AND companyid=$2
+    ORDER BY rank DESC
+) as f 
+LEFT JOIN (
+    SELECT
+    ID 
+    ,Firstname
+    ,Lastname
+    FROM USERS
+) as u 
+ON u.ID=f.UserID
+`
+
+func (c *FeedbackClient) searchFeedback(ctx context.Context, companyID, query string) (feedbacks Feedbacks, err error) {
+	rows, err := c.db.QueryContext(ctx, searchFeedbackQuery, query, companyID)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var feedback Feedback
+		rows.Scan(
+			&feedback.ID,
+			&feedback.UserID,
+			&feedback.Person.Firstname,
+			&feedback.Person.Lastname,
+			&feedback.Title,
+			&feedback.Description,
+			&feedback.UpdatedAt,
+		)
+		if err != nil {
+			return feedbacks, err
+		}
+		feedbacks = append(feedbacks, feedback)
+	}
+
+	if err = rows.Close(); err != nil {
+		return
+	}
+
+	if err = rows.Err(); err != nil {
+		return
+	}
+	return
+
 }
 
 var createFeedback = `

@@ -85,6 +85,10 @@ func (s Signup) Valid() error {
 		errs["email"] = "email cannot be empty"
 	}
 
+	if _, err := utils.IsValidPassword(s.User.Password); err != nil {
+		errs["password"] = err.Error()
+	}
+
 	if len(errs) > 0 {
 		return errs
 	}

@@ -43,7 +43,7 @@ type AddUser struct {
 }
 
 type UserPermissionRequest struct {
-	UserID int         `json:"userId"`
+	UserID string      `json:"userId"`
 	Access AccessLevel `json:"accessLevel"`
 }
 

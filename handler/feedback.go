@@ -35,6 +35,7 @@ var (
 	PutFeedbackForUser            = "/feedback/:fid"
 	PostClapFeedbackForUser       = "/user/feedback/:fid/clap"
 	PostCommentFeedbackForUser    = "/user/feedback/:fid/comment"
+	PostSearchFeedback            = "/feedback/:company/search/:query"
 )
 
 func (api RestAPI) Handler(e *echo.Group) {
@@ -46,6 +47,7 @@ func (api RestAPI) Handler(e *echo.Group) {
 	e.PUT(PutFeedbackForUser, api.UpdateFeedback)
 	e.POST(PostClapFeedbackForUser, api.ClapFeedback)
 	e.POST(PostCommentFeedbackForUser, api.CommentFeedback)
+	e.POST(PostSearchFeedback, api.SearchFeedback)
 
 	api.CompanyHandler(e)
 
@@ -61,6 +63,37 @@ func validateFeedback(feedback models.Feedback) error {
 	}
 
 	return nil
+}
+
+// Search feedback allows users to search through feedbacks
+func (api RestAPI) SearchFeedback(c echo.Context) error {
+	isAuthorized, err := api.SessionClient.IsAuthorizedFromEchoContext(c, models.Write)
+	if err != nil || !isAuthorized {
+
+		api.Logging.Unsuccessful("creatix.feedback.PostFeedback: no permission", utils.NoPermission)
+		return c.String(http.StatusUnauthorized, "")
+	}
+
+	userID := c.Get(utils.UserIDContext.String()).(string)
+	if userID == "" {
+		api.Logging.Unsuccessful("creatix.feedback.PostFeedback: no permission", utils.NoPermission)
+		return c.String(http.StatusUnauthorized, "")
+	}
+
+	companyID := c.Param("company")
+	if companyID == "" {
+		api.Logging.Unsuccessful("no company provided ", nil)
+		return c.String(http.StatusBadRequest, "")
+	}
+
+	query := c.Param("query")
+
+	feedbacks, err := api.FeedbackClient.SearchFeedbackwData(c.Request().Context(), companyID, query)
+	if err != nil {
+		api.Logging.Unsuccessful("no search results ", err)
+		return c.String(http.StatusInternalServerError, "")
+	}
+	return c.JSON(http.StatusOK, feedbacks)
 }
 
 // PostFeedback posts feedback from user
