@@ -123,6 +123,11 @@ func (api RestAPI) DeleteCompanyUser(c echo.Context) (err error) {
 		return c.String(http.StatusBadRequest, "")
 	}
 
+	if userID == userIDToDelete {
+		api.Logging.Unsuccessful("user cannot delete thyself ", nil)
+		return c.String(http.StatusBadRequest, "")
+	}
+
 	err = api.CompanyClient.DeleteUser(c.Request().Context(), companyID, userIDToDelete)
 	if err != nil {
 		api.Logging.Unsuccessful("could not delete user", err)
@@ -199,9 +204,15 @@ func (api RestAPI) ChangeUserPermission(c echo.Context) (err error) {
 		api.Logging.Unsuccessful("could not bind user", err)
 		return c.String(http.StatusBadRequest, "")
 	}
+
+	if newUserRequest.UserID == userID {
+		api.Logging.Unsuccessful("user should not change its accesslevel", err)
+		return c.JSON(http.StatusBadRequest, utils.NewWebError("You are not allowed to change you own accesslevel"))
+	}
+
 	err = api.CompanyClient.UpdateUserPermission(c.Request().Context(), companyID, *newUserRequest)
 	if err != nil {
-		api.Logging.Unsuccessful("could not add user", err)
+		api.Logging.Unsuccessful("could not update user accesslevel", err)
 		return c.String(http.StatusBadRequest, "")
 	}
 	return c.String(http.StatusOK, companyID)
