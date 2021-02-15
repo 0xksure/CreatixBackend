@@ -11,10 +11,18 @@ import (
 type HttpResponse struct {
 	Message string
 	User    utils.SessionUser
+	Error   string
 }
 
 func Message(status bool, message string) map[string]interface{} {
 	return map[string]interface{}{"status": status, "message": message}
+}
+
+func Error(err error, message string) HttpResponse {
+	return HttpResponse{
+		Error:   err.Error(),
+		Message: message,
+	}
 }
 
 func Respond(w http.ResponseWriter, data map[string]interface{}) {
